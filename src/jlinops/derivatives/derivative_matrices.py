@@ -4,6 +4,7 @@ import math
 import scipy.sparse as sps
 
 from ..matrix import MatrixOperator
+from ..sparsematrix import SparseMatrixOperator
 
 
 
@@ -28,7 +29,7 @@ def build_1d_first_order_derivative(N, boundary="periodic"):
     else:
         pass
     
-    return MatrixOperator(d_mat)
+    return SparseMatrixOperator(d_mat)
 
 
 
@@ -53,7 +54,7 @@ def build_2d_first_order_derivative_split(shape, boundary="periodic"):
     eye_horiz = sps.eye(N)
     d_mat_two = sps.kron(eye_horiz, d_mat_vert)
     
-    return MatrixOperator(d_mat_one), MatrixOperator(d_mat_two)
+    return SparseMatrixOperator(d_mat_one), MatrixOperator(d_mat_two)
 
 
 
@@ -67,5 +68,5 @@ def build_2d_first_order_derivative(shape, boundary="periodic"):
 
     full_diff_mat = sps.vstack([d_mat_one.A, d_mat_two.A])
     
-    return MatrixOperator(full_diff_mat)
+    return SparseMatrixOperator(full_diff_mat)
 

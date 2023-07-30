@@ -32,7 +32,7 @@ class SparseCholeskyApproximatePseudoInverseOperator(_CustomLinearOperator):
 
         # Build matvec and rmatvec
         def _matvec(x):
-            tmp = self.A.T @ x
+            tmp = self.original_op.A.T @ x
             tmp = self.superlu.solve(tmp, trans="N")
             return tmp
         
