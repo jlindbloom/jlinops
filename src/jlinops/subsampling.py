@@ -3,7 +3,6 @@ from scipy.sparse.linalg._interface import _CustomLinearOperator
 
 
 
-
 class SubsamplingOperator(_CustomLinearOperator):
     """Represents a subsampling operator.
     """

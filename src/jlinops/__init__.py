@@ -3,6 +3,8 @@ from .sparsematrix import *
 from .pseudoinverse import *
 from .cginv import *
 from .subsampling import *
+from .diagonalized import *
+from .blurring import *
 from .cholesky import *
 from .derivatives import *
 
