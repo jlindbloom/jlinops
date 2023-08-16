@@ -28,7 +28,7 @@ class SparseCholeskyApproximatePseudoInverseOperator(_CustomLinearOperator):
         self._n = self.original_op.A.shape[1]
 
         # Perform factorization
-        self.chol_fac, self.superlu = banded_cholesky_factorization( (self.original_op.A.T @ self.original_op.A) + self.delta*sps.eye(self._n))
+        self.chol_fac, self.superlu = banded_cholesky_factorization( (self.original_op.A.T @ self.original_op.A) + self.delta*sps.eye(self._n) )
 
         # Build matvec and rmatvec
         def _matvec(x):
@@ -64,7 +64,7 @@ class QRPseudoInverseOperator(_CustomLinearOperator):
         # Build matvec and rmatvec
         def _matvec(vec):
             tmp = self.Q_fac.T @ vec
-            tmp = scipy_solve_triangular(self.R_fac, tmp)
+            tmp = scipy_solve_triangular(self.R_fac, tmp, lower=False)
             return tmp
         
         def _rmatvec(vec):
@@ -73,5 +73,8 @@ class QRPseudoInverseOperator(_CustomLinearOperator):
             return tmp
 
         super().__init__( (self._n, self._k), _matvec, _rmatvec )
+
+
+
 
 
