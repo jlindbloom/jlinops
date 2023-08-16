@@ -8,7 +8,7 @@ from ..sparsematrix import SparseMatrixOperator
 
 
 
-def build_1d_first_order_derivative(N, boundary="periodic"):
+def build_1d_first_order_derivative(N, boundary="none"):
     """Constructs a SciPy sparse matrix that extracts the (1D) discrete gradient of an input signal.
     Boundary parameter specifies how to handle the boundary conditions.
     """
