@@ -38,7 +38,7 @@ class SparseCholeskyApproximatePseudoInverseOperator(_CustomLinearOperator):
         
         def _rmatvec(x):
             tmp = self.superlu.solve(x, trans="T")
-            tmp = self.original_op.A @ x
+            tmp = self.original_op.A @ tmp
             return tmp
         
         super().__init__( (self._n, self._k), _matvec, _rmatvec )

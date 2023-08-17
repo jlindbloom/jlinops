@@ -9,6 +9,7 @@ from .blurring import *
 from .cholesky import *
 from .derivatives import *
 from .identity import *
+from .checking import *
 
 
 
