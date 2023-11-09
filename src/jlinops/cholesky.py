@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import scipy.sparse as scipy_sparse
 from scipy.sparse import linalg as scipy_splinalg
 
+
 from .matrix import MatrixOperator
 
 
@@ -51,6 +52,7 @@ def banded_cholesky_factorization(A, check=False):
         print(f"L2 norm between L L^T and A: {norm_error}")
     
     return L, LU
+
 
 
 

@@ -69,7 +69,7 @@ class Gaussian2DBlurOperator(_CustomLinearOperator):
             return gaussian_filter(x.reshape((m,n)), float(self.blur_sigma), mode=self.mode).flatten()
 
 
-        super().__init__( (n, n), _matvec, _matvec)
+        super().__init__( (m*n, m*n), _matvec, _matvec)
 
 
 
