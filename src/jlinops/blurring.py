@@ -4,10 +4,6 @@ from scipy.ndimage import gaussian_filter
 
 
 
-
-
-
-
 class Gaussian1DBlurOperator(_CustomLinearOperator):
     """Implements a Gaussian blurring operator for 1D vectors.
     """

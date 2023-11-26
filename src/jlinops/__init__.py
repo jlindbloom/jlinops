@@ -5,6 +5,7 @@ from .cginv import *
 from .blurring import *
 from .subsampling import *
 from .diagonalized import *
+from .diagonal import *
 from .blurring import *
 from .cholesky import *
 from .derivatives import *

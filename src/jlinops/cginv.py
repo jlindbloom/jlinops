@@ -6,7 +6,7 @@ from .linear_solvers import cg
 
 
 
-class CGApproximateInverseOperator(_CustomLinearOperator):
+class CGInverseOperator(_CustomLinearOperator):
     """Represents an approximation to the inverse operator of an input SPD LinearOperator,
     """
 

@@ -20,7 +20,6 @@ from .matrix import MatrixOperator
 
 
 
-
 def banded_cholesky_factorization(A, check=False):
     """
     Given a sparse banded matrix :math:`A`, returns the Cholesky factor :math:`L` in the factorizations
@@ -52,7 +51,6 @@ def banded_cholesky_factorization(A, check=False):
         print(f"L2 norm between L L^T and A: {norm_error}")
     
     return L, LU
-
 
 
 
