@@ -526,6 +526,16 @@ class LinearOperator:
     def _transpose(self):
         """ Default implementation of _transpose; defers to rmatvec + conj"""
         return _TransposedLinearOperator(self)
+    
+    def to_cpu(self):
+        """Method defining how to build the cpu version of the operator.
+        """
+        return NotImplementedError
+    
+    def to_gpu(self):
+        """Method defining how to build the gpu version of the operator.
+        """
+        raise NotImplementedError
 
 
 
