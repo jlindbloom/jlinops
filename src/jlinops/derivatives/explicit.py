@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .util import build_1d_first_order_derivative
+from .derivative_matrices import build_1d_first_order_derivative
 
 
 

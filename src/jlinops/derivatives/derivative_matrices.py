@@ -3,8 +3,7 @@ import math
 
 import scipy.sparse as sps
 
-from ..matrix import MatrixOperator
-from ..sparsematrix import SparseMatrixOperator
+from ..matrix import MatrixOperator, SparseMatrixOperator
 
 
 

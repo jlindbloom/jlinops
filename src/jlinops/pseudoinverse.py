@@ -5,9 +5,8 @@ from scipy.sparse.linalg._interface import MatrixLinearOperator, _CustomLinearOp
 import scipy.sparse as sps
 import math
 
-from .matrix import MatrixOperator
-from .sparsematrix import SparseMatrixOperator
-from .cholesky import banded_cholesky_factorization
+from .matrix import MatrixOperator, SparseMatrixOperator
+from .util import banded_cholesky_factorization
 from .diagonal import DiagonalOperator
 from .derivatives import DiscreteGradientNeumann2D
 from .dct import build_dct_Lpinv

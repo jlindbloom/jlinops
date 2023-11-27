@@ -4,8 +4,7 @@ from scipy.sparse.linalg._interface import _CustomLinearOperator
 
 
 class DiagonalizedOperator(_CustomLinearOperator):
-    """Represents a SSPD linear operator that has been diagonalized as
-        A = P D P^H,
+    """Represents a SSPD linear operator that has been diagonalized as A = P D P^H,
     for which D is known and P is known as a linear operator.
     """
     def __init__(self, P, eigenvalues):
