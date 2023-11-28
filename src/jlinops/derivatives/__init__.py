@@ -1,2 +1,4 @@
-from .derivative_matrices import *
-from .implicit import DiscreteGradientNeumann2D
+#from .derivative_matrices import *
+
+
+from .implicit import Neumann2D

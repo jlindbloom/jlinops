@@ -11,7 +11,13 @@ except:
 # Imports
 from .util import *
 from .base import *
-
+from .diagonal import *
+from .blurring import *
+from .local_averaging import *
+from .subsampling import *
+from .local_averaging import *
+from .derivatives import *
+from .linalg import *
 
 
 

@@ -10,54 +10,36 @@ if CUPY_INSTALLED:
 
 
 
-class DiagonalLinearOperator(_CustomLinearOperator):
+class DiagonalOperator(_CustomLinearOperator):
     """Implements a diagonal linear operator D.
     """
 
     def __init__(self, diagonal):
-
+        
+        assert diagonal.ndim == 1, "Diagonal array must be 1-dimensional."
         self.diagonal = diagonal
         n = len(diagonal)
         device = get_device(diagonal)
 
         def _matvec(x):
-            return self.diagonal
+            return self.diagonal*x
         
-        super().__init__((n,n), _matvec, _matvec, device=device, dtype=self.diagonal.dtype)
+        def _rmatvec(x):
+            return self.diagonal.conj()*x
+        
+        super().__init__((n,n), _matvec, _rmatvec, device=device, dtype=self.diagonal.dtype)
 
     def to_gpu(self):
 
         assert CUPY_INSTALLED, "CuPy must be installed!"
 
-        return DiagonalLinearOperator(cp.asarray(self.diagonal))
+        return DiagonalOperator(cp.asarray(self.diagonal))
     
     def to_cpu(self):
 
         assert CUPY_INSTALLED, "CuPy must be installed!"
 
-        return DiagonalLinearOperator(cp.asnumpy(self.diagonal)) 
-
-
-
-
-
-
-
-# class DiagonalOperator(_CustomLinearOperator):
-#     """Implements a diagonal linear operator D.
-#     """
-
-#     def __init__(self, diagonal):
-        
-#         self.diagonal = diagonal
-#         n = len(diagonal)
-
-#         def _matvec(x):
-#             return self.diagonal*x
-        
-#         super().__init__( (n,n), _matvec, _matvec)
-
-
+        return DiagonalOperator(cp.asnumpy(self.diagonal)) 
 
 
 

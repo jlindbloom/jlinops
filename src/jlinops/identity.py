@@ -2,6 +2,7 @@ import numpy as np
 from scipy.sparse.linalg._interface import _CustomLinearOperator
 
 
+
 class IdentityOperator(_CustomLinearOperator):
     """Represents the identity operator.
     """

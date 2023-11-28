@@ -2,6 +2,7 @@ import numpy as np
 from scipy.sparse.linalg._interface import MatrixLinearOperator, _CustomLinearOperator
 
 from scipy.sparse.linalg import cg as scipy_cg
+
 from .linear_solvers import cg
 
 
@@ -38,12 +39,6 @@ class CGInverseOperator(_CustomLinearOperator):
             return sol
         
         super().__init__( self.original_op.shape, _matvec, _matvec )
-
-    def _inv(self):
-        return self.original_op
-    
-    Inv = property(_inv)
-
 
 
 
