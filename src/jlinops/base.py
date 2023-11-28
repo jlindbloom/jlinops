@@ -1,13 +1,25 @@
 import numpy as np
 import warnings
 
-from .util import issparse, isshape, get_device
-from scipy.sparse._sputils import isintlike, asmatrix, is_pydata_spmatrix
+from scipy.sparse._sputils import is_pydata_spmatrix
 
 # __all__ = ['LinearOperator', 'aslinearoperator']
 
+# SciPy 1.11.4
+# CuPy 12.2
 
+from .util import issparse, isshape, isintlike, asmatrix, get_device
 
+from . import CUPY_INSTALLED
+if CUPY_INSTALLED:
+    import cupy as cp
+    import cupyx.scipy.sparse as cpsparse
+
+    
+# Below is a version of SciPy's LinearOperator modded to be "device-aware",
+# allowing for flexiblity in converting between CPU/GPU linear operators.
+    
+    
 class LinearOperator:
     """Common interface for performing matrix vector products
 
@@ -125,7 +137,10 @@ class LinearOperator:
         self.device = device
 
         if dtype is not None:
-            dtype = np.dtype(dtype)
+            if self.device == "cpu":
+                dtype = np.dtype(dtype)
+            else:
+                dtype = cp.dtype(dtype)
 
         shape = tuple(shape)
         if not isshape(shape):
@@ -138,8 +153,12 @@ class LinearOperator:
         """Called from subclasses at the end of the __init__ routine.
         """
         if self.dtype is None:
-            v = np.zeros(self.shape[-1])
-            self.dtype = np.asarray(self.matvec(v)).dtype
+            if self.device == "cpu":
+                v = np.zeros(self.shape[-1])
+                self.dtype = np.asarray(self.matvec(v)).dtype
+            else:
+                v = cp.zeros(self.shape[-1])
+                self.dtype = cp.asarray(self.matvec(v)).dtype
 
     def _matmat(self, X):
         """Default matrix-matrix multiplication handler.
@@ -185,10 +204,12 @@ class LinearOperator:
         _matvec method to ensure that y has the correct shape and type.
 
         """
+        if self.device == "cpu":
+            x = np.asanyarray(x)
+        else:
+            x = cp.asanyarray(x)
 
-        x = np.asanyarray(x)
-
-        M,N = self.shape
+        M, N = self.shape
 
         if x.shape != (N,) and x.shape != (N,1):
             raise ValueError('dimension mismatch')
@@ -198,7 +219,10 @@ class LinearOperator:
         if isinstance(x, np.matrix):
             y = asmatrix(y)
         else:
-            y = np.asarray(y)
+            if self.device == "cpu":
+                y = np.asarray(y)
+            else:
+                y = cp.asarray(y)
 
         if x.ndim == 1:
             y = y.reshape(M)
@@ -233,9 +257,12 @@ class LinearOperator:
 
         """
 
-        x = np.asanyarray(x)
+        if self.device == "cpu":
+            x = np.asanyarray(x)
+        else:
+            x = cp.asarray(x)
 
-        M,N = self.shape
+        M, N = self.shape
 
         if x.shape != (M,) and x.shape != (M,1):
             raise ValueError('dimension mismatch')
@@ -245,7 +272,10 @@ class LinearOperator:
         if isinstance(x, np.matrix):
             y = asmatrix(y)
         else:
-            y = np.asarray(y)
+            if self.device == "cpu":
+                y = np.asarray(y)
+            else:
+                y = cp.asarray(y)
 
         if x.ndim == 1:
             y = y.reshape(N)
@@ -287,8 +317,12 @@ class LinearOperator:
         _matmat method to ensure that y has the correct type.
 
         """
-        if not (issparse(X) or is_pydata_spmatrix(X)):
+        
+        if not (issparse(X) or is_pydata_spmatrix(X)) and (self.device == "cpu"):
             X = np.asanyarray(X)
+        elif not (issparse(X) or is_pydata_spmatrix(X)) and (self.device == "gpu"):
+            X = cp.asanyarray(X)
+        
 
         if X.ndim != 2:
             raise ValueError(f'expected 2-d ndarray or matrix, not {X.ndim}-d')
@@ -307,6 +341,8 @@ class LinearOperator:
             raise
 
         if isinstance(Y, np.matrix):
+            Y = asmatrix(Y)
+        elif isinstance(Y, cp.ndarray):
             Y = asmatrix(Y)
 
         return Y
@@ -398,7 +434,10 @@ class LinearOperator:
         else:
             if not issparse(x) and not is_pydata_spmatrix(x):
                 # Sparse matrices shouldn't be converted to numpy arrays.
-                x = np.asarray(x)
+                if self.device == "cpu":
+                    x = np.asarray(x)
+                else:
+                    x = cp.asarray(x)
 
             if x.ndim == 1 or x.ndim == 2 and x.shape[1] == 1:
                 return self.matvec(x)
@@ -653,7 +692,7 @@ class _SumLinearOperator(LinearOperator):
         if A.device != B.device:
             raise ValueError(f"cannot add {A} and {B}: device mismatch")
         self.args = (A, B)
-        super().__init__(_get_dtype([A, B]), A.shape)
+        super().__init__(_get_dtype([A, B]), A.shape, device=A.device)
 
     def _matvec(self, x):
         return self.args[0].matvec(x) + self.args[1].matvec(x)
@@ -670,6 +709,12 @@ class _SumLinearOperator(LinearOperator):
     def _adjoint(self):
         A, B = self.args
         return A.H + B.H
+    
+    def to_gpu(self):
+        return _SumLinearOperator(self.args[0].to_gpu(), self.args[1].to_gpu())
+    
+    def to_cpu(self):
+        return _SumLinearOperator(self.args[0].to_cpu(), self.args[1].to_cpu())
 
 
 
@@ -683,8 +728,7 @@ class _ProductLinearOperator(LinearOperator):
         if A.device != B.device:
             raise ValueError(f"cannot multiply {A} and {B}: device mismatch")
 
-        super().__init__(_get_dtype([A, B]),
-                                                     (A.shape[0], B.shape[1]))
+        super().__init__(_get_dtype([A, B]), (A.shape[0], B.shape[1]), device=A.device)
         self.args = (A, B)
 
     def _matvec(self, x):
@@ -702,7 +746,13 @@ class _ProductLinearOperator(LinearOperator):
     def _adjoint(self):
         A, B = self.args
         return B.H * A.H
-
+    
+    def to_gpu(self):
+        return _ProductLinearOperator(self.args[0].to_gpu(), self.args[1].to_gpu())
+    
+    def to_cpu(self):
+        return _ProductLinearOperator(self.args[0].to_cpu(), self.args[1].to_cpu())
+    
 
 
 class _ScaledLinearOperator(LinearOperator):
@@ -737,6 +787,13 @@ class _ScaledLinearOperator(LinearOperator):
         A, alpha = self.args
         return A.H * np.conj(alpha)
 
+    def to_gpu(self):
+        
+        return _ScaledLinearOperator(self.args[0].to_gpu(), self.args[1])
+    
+    def to_cpu(self):
+        
+        return _ScaledLinearOperator(self.args[0].to_cpu(), self.args[1])
 
 
 class _PowerLinearOperator(LinearOperator):
@@ -752,7 +809,10 @@ class _PowerLinearOperator(LinearOperator):
         self.args = (A, p)
 
     def _power(self, fun, x):
-        res = np.array(x, copy=True)
+        if self.device == "cpu":
+            res = np.array(x, copy=True)
+        else:
+            res = cp.array(x, copy=True)
         for i in range(self.args[1]):
             res = fun(res)
         return res
@@ -772,6 +832,12 @@ class _PowerLinearOperator(LinearOperator):
     def _adjoint(self):
         A, p = self.args
         return A.H ** p
+    
+    def to_gpu(self):
+        return _PowerLinearOperator(self.args[0].to_gpu(), self.args[1])
+    
+    def to_cpu(self):
+        return _PowerLinearOperator(self.args[0].to_cpu(), self.args[1])
 
 
 
@@ -789,6 +855,28 @@ class MatrixLinearOperator(LinearOperator):
         if self.__adj is None:
             self.__adj = _AdjointMatrixOperator(self)
         return self.__adj
+    
+    def to_gpu(self):
+        if issparse(self.args[0]):
+            fmt = self.args[0].getformat()
+            if fmt == "csc":
+                return MatrixLinearOperator(cpsparse.csc_matrix(self.args[0]))
+            elif fmt == "csr":
+                return MatrixLinearOperator(cpsparse.csr_matrix(self.args[0]))
+            elif fmt == "coo":
+                return MatrixLinearOperator(cpsparse.coo_matrix(self.args[0]))
+            elif fmt == "dia":
+                return MatrixLinearOperator(cpsparse.dia_matrix(self.args[0]))
+            else:
+                raise NotImplementedError
+        else:
+            return MatrixLinearOperator(cp.asarray(self.args[0]))
+        
+    def to_cpu(self):
+        if issparse(self.args[0]):
+            return MatrixLinearOperator(self.args[0].get())
+        else:
+            return MatrixLinearOperator(cp.asnumpy(self.args[0]))
 
 
 
@@ -798,6 +886,7 @@ class _AdjointMatrixOperator(MatrixLinearOperator):
         self.__adjoint = adjoint
         self.args = (adjoint,)
         self.shape = adjoint.shape[1], adjoint.shape[0]
+        self.device = get_device(adjoint.A)
 
     @property
     def dtype(self):
@@ -869,7 +958,13 @@ def aslinearoperator(A):
             raise ValueError('array must have ndim <= 2')
         A = np.atleast_2d(np.asarray(A))
         return MatrixLinearOperator(A)    
-
+    
+    elif isinstance(A, cp.ndarray):
+        if A.ndim > 2:
+            raise ValueError('array must have ndim <= 2')
+        A = cp.atleast_2d(cp.asarray(A))
+        return MatrixLinearOperator(A)
+    
     elif issparse(A) or is_pydata_spmatrix(A):
         return MatrixLinearOperator(A)
     
@@ -880,6 +975,7 @@ def aslinearoperator(A):
             rmatvec = None
             rmatmat = None
             dtype = None
+            device = None
 
             if hasattr(A, 'rmatvec'):
                 rmatvec = A.rmatvec
@@ -887,8 +983,10 @@ def aslinearoperator(A):
                 rmatmat = A.rmatmat
             if hasattr(A, 'dtype'):
                 dtype = A.dtype
+            if hasattr(A, 'device'):
+                device = A.device
             return LinearOperator(A.shape, A.matvec, rmatvec=rmatvec,
-                                  rmatmat=rmatmat, dtype=dtype)
+                                  rmatmat=rmatmat, dtype=dtype, device=device)
 
         else:
             raise TypeError('type not understood')
