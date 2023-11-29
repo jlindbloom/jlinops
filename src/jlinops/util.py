@@ -10,13 +10,14 @@ import operator
 from scipy.sparse._base import _spbase as sp_spbase
 from scipy.sparse._sputils import isshape as sp_isshape
 from scipy.sparse._sputils import asmatrix as sp_asmatrix
+from scipy.sparse import csc_matrix
 
 
 from . import CUPY_INSTALLED
 if CUPY_INSTALLED:
     import cupy as cp
     from cupyx.scipy.sparse._base import spmatrix as cp_spmatrix
-
+    import cupyx.scipy.sparse as cpsparse
 
 # CuPy compatibility
 # from .. import CUPY_INSTALLED
@@ -62,10 +63,39 @@ def issparse(x):
 
 
 
-# def isshape(*args, **kwargs):
-#     """Is x a tuple of valid dimension? Alias of SciPy's isshape.
-#     """
-#     return sp_isshape(*args, **kwargs)
+def tosparse(x):
+    """Converts an input array to a sparse type. Currently only supports converting to a csr matrix.
+    """
+    
+    if issparse(x):
+        return x
+    
+    else:
+        
+        device = get_device(x)
+        if device == "cpu":
+
+            return csc_matrix(x)
+
+        else:
+
+            return cpsparse.csc_matrix(x)
+        
+        
+        
+def scipy_superlu_to_cupy_superlu(superlu):
+    """Accepts a SciPy SuperLU object and returns a CuPy SuperLU object.
+    """
+    
+    raise NotImplementedError
+    
+    
+    
+def cupy_superlu_to_scipy_superlu(superlu):
+    """Accepts a CuPy SuperLU object and returns a SciPy SuperLU object.
+    """
+    
+    raise NotImplementedError
 
 
 

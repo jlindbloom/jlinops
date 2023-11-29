@@ -1,210 +1,507 @@
 import numpy as np
 from scipy.linalg import qr as scipy_qr
 from scipy.linalg import solve_triangular as scipy_solve_triangular
-from scipy.sparse.linalg._interface import MatrixLinearOperator, _CustomLinearOperator
+# from scipy.sparse.linalg._interface import MatrixLinearOperator, _CustomLinearOperator
 import scipy.sparse as sps
 import math
 
-from .matrix import MatrixOperator, SparseMatrixOperator
-from .util import banded_cholesky_factorization
+
+
+from .matrix import MatrixLinearOperator, _CustomLinearOperator 
+from .util import banded_cholesky
 from .diagonal import DiagonalOperator
-from .derivatives import DiscreteGradientNeumann2D
-from .dct import build_dct_Lpinv
+from .derivatives import Neumann2D
+from .linalg import dct_sqrt_pinv
 
 from scipy.sparse.linalg import cg as scipy_cg
 from .linear_solvers import cg
 
+        
+from scipy.linalg import qr as sp_qr
+from scipy.linalg import solve_triangular as sp_solve_triangular
 
-class BandedCholeskyPseudoinverseOperator(_CustomLinearOperator):
-    """Takes a (non-square) SciPy sparse matrix and builds a linear operator representing an approximation to the 
-    pseudo-inverse of A. This is most efficient if A^T A is sparse and banded.
+
+from . import CUPY_INSTALLED
+if CUPY_INSTALLED:
+    import cupy as cp
+    from cupyx.scipy.linalg import solve_triangular as cp_solve_triangular
+    from cupy.linalg import qr as cp_qr
+
+
+
+class BandedCholeskyPinvOperator(_CustomLinearOperator):
+    """Takes a (non-square) MatrixLinearOperator A and builds a linear operator representing an approximation to the 
+    pseudo-inverse of A. This is most efficient if A^T A is sparse and (already) banded.
     """
 
-    def __init__(self, mat_operator, delta=1e-3):
+    def __init__(self, A, delta=1e-3, _superlu=None):
 
-        assert isinstance(mat_operator, SparseMatrixOperator), "must give SparseMatrixOperator as an input."
+        assert isinstance(A, MatrixLinearOperator), "Must give MatrixOperator as an input."
         
-        # Keep original operator
-        self.original_op = mat_operator
-
-        # Store delta and shape
+        # Bind
+        self.original_op = A
+        self.original_shape = A.shape
         self.delta = delta
-        self._k, self._n = self.original_op.A.shape
-        self._n = self.original_op.A.shape[1]
-
-        # Perform factorization
-        self.chol_fac, self.superlu = banded_cholesky_factorization( (self.original_op.A.T @ self.original_op.A) + self.delta*sps.eye(self._n) )
-
+        
+        # Device
+        device = A.device
+        
+        # Original shape
+        k, n = A.shape
+        
+        # Enforce that underling A.T A is a sparse type
+        if not issparse(A.A):
+            AtA = MatrixLinearOperator( tosparse(A.A.T @ A.A).tocsc() )
+        else:
+            AtA = MatrixLinearOperator(A.A.T @ A.A)
+        
+        # Even if on GPU, factorize and make superlu object on CPU
+        if device == "cpu":
+            AtA_cpu = AtA
+        else:
+            AtA_cpu = AtA.to_cpu()
+            
+        # Matrix we will factorize
+        mat = AtA_cpu.A + self.delta*sps.eye(n)
+        
+        if superlu is None:
+            
+            # Perform factorization
+            chol_fac, superlu = banded_cholesky( mat )
+            
+            # Make GPU superlu object if applicable
+            if device == "gpu":
+                superlu = cp_SuperLU(superlu)
+                
+        else: 
+            pass
+        
+        
+            
+        # Bind superlu and A
+        self.superlu = superlu
+        self.A = A
+            
         # Build matvec and rmatvec
         def _matvec(x):
-            tmp = self.original_op.A.T @ x
+            tmp = self.A.rmatvec(x)
             tmp = self.superlu.solve(tmp, trans="N")
             return tmp
         
         def _rmatvec(x):
             tmp = self.superlu.solve(x, trans="T")
-            tmp = self.original_op.A @ tmp
+            tmp = self.A.matvec(tmp)
             return tmp
         
-        super().__init__( (self._n, self._k), _matvec, _rmatvec )
+        super().__init__( (n,k), _matvec, _rmatvec, device=device, dtype=A.dtype)
+        
+        
+    def to_gpu(self):
+        
+        # Switch to CPU superlu
+        superlu = cp_SuperLU(self.superlu)
+        
+        return BandedCholeskyPinvOperator(A.to_gpu(), delta=self.delta, _superlu=superlu)
+    
+    
+    def to_cpu(self):
+        
+        raise NotImplementedError
 
 
 
-class QRPseudoInverseOperator(_CustomLinearOperator):
+class QRPinvOperator(_CustomLinearOperator):
     """Takes a dense matrix A with full column rank, builds a linear operator representing the pseudo-inverse of A
     using the QR method.
     """
 
-    def __init__(self, mat_operator):
+    def __init__(self, A):
 
-        assert isinstance(mat_operator, MatrixOperator), "must give MatrixOperator as an input."
+        assert isinstance(A, MatrixLinearOperator), "must give MatrixOperator as an input."
 
         # Store original operator
-        self.original_op = mat_operator
-        self._k, self._n = self.original_op.shape
-
-        # Perform QR decomposition
-        self.Q_fac, self.R_fac = scipy_qr(self.original_op.A, mode="economic")
-
-        # Build matvec and rmatvec
-        def _matvec(vec):
-            tmp = self.Q_fac.T @ vec
-            tmp = scipy_solve_triangular(self.R_fac, tmp, lower=False)
-            return tmp
+        self.original_op = A
+        k, n = A.shape
         
-        def _rmatvec(vec):
-            tmp = scipy_solve_triangular(self.R_fac.T, vec, lower=True)
-            tmp = self.Q_fac @ tmp
-            return tmp
+        # Device
+        device = A.device
+        
+        if device == "cpu":
+            
+            Q_fac, R_fac = sp_qr(A.A, mode="economic")
 
-        super().__init__( (self._n, self._k), _matvec, _rmatvec )
+            # Build matvec and rmatvec
+            def _matvec(vec):
+                tmp = Q_fac.T @ vec
+                tmp = sp_solve_triangular(R_fac, tmp, lower=False)
+                return tmp
 
+            def _rmatvec(vec):
+                tmp = scipy_solve_triangular(R_fac.T, vec, lower=True)
+                tmp = Q_fac @ tmp
+                return tmp
+            
+        else:
+            
+            Q_fac, R_fac = cp_qr(A.A, mode="reduced")
 
+            # Build matvec and rmatvec
+            def _matvec(vec):
+                tmp = Q_fac.T @ vec
+                tmp = cp_solve_triangular(R_fac, tmp, lower=False)
+                return tmp
 
+            def _rmatvec(vec):
+                tmp = cp_solve_triangular(R_fac.T, vec, lower=True)
+                tmp = Q_fac @ tmp
+                return tmp
 
-class CGPseudoinverseOperator(_CustomLinearOperator):
+        super().__init__( (n, k), _matvec, _rmatvec , device=device)
+        
+        
+    def to_gpu(self):
+        return QRPseudoInverseOperator(self.original_op.to_gpu())
+    
+    def to_cpu(self):
+        return QRPseudoInverseOperator(self.original_op.to_cpu())
+
+            
+        
+class CGPinvOperator(_CustomLinearOperator):
     """Returns a linear operator that approximately computes the pseudoinverse of a matrix A using 
     a conjugate gradient method.
     """
 
-    def __init__(self, operator, warmstart_prev=False, which="jlinops", *args, **kwargs):
+    def __init__(self, A, warmstart_prev=False, which="jlinops", check=False, *args, **kwargs):
 
         assert which in ["jlinops", "scipy"], "Invalid choice for which!"
 
         # Store operator
-        self.original_op = operator
+        self.original_op = A
+        self.A = A
+        
+        # Device
+        device = A.device
+    
 
         # Setup
         self.which = which
-        self.in_shape = self.original_op.shape[0]
-        self.out_shape = self.original_op.shape[1]
-        self.prev_eval = np.zeros(self.out_shape)
-        self.prev_eval_t = np.zeros(self.in_shape)
+        self.warmstart_prev = warmstart_prev
+        self.check = check
+        self.args = args
+        self.kwargs = kwargs
+        self.in_shape = A.shape[0]
+        self.out_shape = A.shape[1]
+        
+        if device == "cpu":
+            self.prev_eval = np.zeros(self.out_shape)
+            self.prev_eval_t = np.zeros(self.in_shape)
+        else:
+            self.prev_eval = cp.zeros(self.out_shape)
+            self.prev_eval_t = cp.zeros(self.in_shape)
+            
         self.warmstart_prev = warmstart_prev
 
         # Build both operators we need
         self.AtA = self.original_op.T @ self.original_op
         self.AAt = self.original_op @ self.original_op.T
-
-        # Define matvec and rmatvec
-        def _matvec(x):
-            if self.which == "scipy":
-                sol, converged = scipy_cg(self.AtA, self.original_op.T @ x, x0=self.prev_eval, *args, **kwargs) 
-                assert converged == 0, "CG algorithm did not converge!"
-            elif self.which == "jlinops":
-                solver_data = cg(self.AtA, self.original_op.T @ x, x0=self.prev_eval, *args, **kwargs)
-                sol = solver_data["x"]
-            else:
-                raise ValueError
-
-            if self.warmstart_prev:
-                self.prev_eval = sol.copy()
-
-            return sol
         
-        def _rmatvec(x):
-            if self.which == "scipy":
-                sol, converged = scipy_cg(self.AAt, self.original_op @ x, x0=self.prev_eval_t, *args, **kwargs) 
-                assert converged == 0, "CG algorithm did not converge!"
-            elif self.which == "jlinops":
-                solver_data = cg(self.AAt, self.original_op @ x, x0=self.prev_eval_t, *args, **kwargs)
-                sol = solver_data["x"]
-            else:
-                raise ValueError
-
-            if self.warmstart_prev:
-                self.prev_eval_t = sol.copy()
+        
+        if device == "cpu":
+            
+            if self.which == "jlinops":
                 
-            return sol
+                def _matvec(x):
+                    solver_data = jlinops_cg(self.AtA, self.A.rmatvec(x), x0=self.prev_eval, *args, **kwargs)
+                    sol = solver_data["x"]
+                    if self.check:
+                        assert solver_data["converged"], "CG algorithm did not converge"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                    
+                    return sol
+                
+                def _rmatvec(x):
+                    solver_data = jlinops_cg(self.AAt, self.A.matvec(x), x0=self.prev_eval_t, *args, **kwargs)
+                    sol = solver_data["x"]
+                    if self.check:
+                        assert solver_data["converged"], "CG algorithm did not converge"
+                        
+                    if self.warmstart_prev:
+                        self.prev_eval_t = sol.copy()
+                        
+                    return sol
         
-        super().__init__( (self.out_shape, self.in_shape), _matvec, _rmatvec )
+            elif self.which == "scipy":
+                
+                def _matvec(x):
+                    sol, converged = scipy_cg(self.AtA, self.A.rmatvec(x), x0=self.prev_eval, *args, **kwargs) 
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
+                        
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                    
+                    return sol
+                
+                def _rmatvec(x):
+                    sol, converged = scipy_cg(self.AAt, self.A.matvec(x), x0=self.prev_eval_t, *args, **kwargs) 
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval_t = sol.copy()
+                    
+                    return sol
+                
+            else:
+                raise NotImplementedError
+                
+        else:
+            
+            
+            if self.which == "jlinops":
+                
+                def _matvec(x):
+                    solver_data = jlinops_cg(self.AtA, self.A.rmatvec(x), x0=self.prev_eval, *args, **kwargs)
+                    sol = solver_data["x"]
+                    if self.check:
+                        assert solver_data["converged"], "CG algorithm did not converge"
+                        
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                        
+                    return sol
+                
+                def _rmatvec(x):
+                    solver_data = jlinops_cg(self.AAt, self.A.matvec(x), x0=self.prev_eval_t, *args, **kwargs)
+                    sol = solver_data["x"]
+                    if self.check:
+                        assert solver_data["converged"], "CG algorithm did not converge"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval_t = sol.copy()
+                    
+                    return sol
+        
+            elif self.which == "scipy":
+                
+                def _matvec(x):
+                    sol, converged = cupy_cg(self.AtA, self.A.rmatvec(x), x0=self.prev_eval, *args, **kwargs) 
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                        
+                    return sol
+                
+                def _rmatvec(x):
+                    sol, converged = cupy_cg(self.AAt, self.A.matvec(x), x0=self.prev_eval_t, *args, **kwargs) 
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval_t = sol.copy()
+                        
+                    return sol
+                
+            else:
+                raise NotImplementedError
+            
+            
+        super().__init__( self.A.shape, _matvec, _rmatvec, device=device, dtype=self.A.dtype)
+        
+        
+        
+    def to_gpu(self):
+        return CGPinvOperator(self.A.to_gpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
+    
+    def to_cpu(self):
+        return CGPinvOperator(self.A.to_cpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
 
+        
 
-
-class CGModPseudoinverseOperator(_CustomLinearOperator):
+        
+class CGModPinvOperator(_CustomLinearOperator):
     """Returns a linear operator that approximately computes the pseudoinverse of a matrix A using 
     a conjugate gradient method. Modifed so that it only ever solves systems with A^T A. 
+    
+    W: a LinearOperator representing a matrix with linearly independent columns that spans null(A).
+    Wpinv: a LinearOperator represening the pseudoinverse of W.
     """
 
-    def __init__(self, operator, W, Wpinv, warmstart_prev=False, which="jlinops", *args, **kwargs):
+    def __init__(self, A, W, Wpinv, warmstart_prev=False, which="jlinops", check=False, *args, **kwargs):
 
         assert which in ["jlinops", "scipy"], "Invalid choice for which!"
 
         # Store operator
-        self.original_op = operator
+        self.original_op = A
+        self.A = A
         self.W = W
         self.Wpinv = Wpinv
+        
+        # Device
+        device = A.device
+    
 
         # Setup
         self.which = which
-        self.in_shape = self.original_op.shape[0]
-        self.out_shape = self.original_op.shape[1]
-        self.prev_eval = np.zeros(self.out_shape)
-        self.prev_eval_t = np.zeros(self.out_shape)
+        self.warmstart_prev = warmstart_prev
+        self.check = check
+        self.args = args
+        self.kwargs = kwargs
+        self.in_shape = A.shape[0]
+        self.out_shape = A.shape[1]
+        
+        if device == "cpu":
+            self.prev_eval = np.zeros(self.out_shape)
+            self.prev_eval_t = np.zeros(self.in_shape)
+        else:
+            self.prev_eval = cp.zeros(self.out_shape)
+            self.prev_eval_t = cp.zeros(self.in_shape)
+            
         self.warmstart_prev = warmstart_prev
 
         # Build both operators we need
         self.AtA = self.original_op.T @ self.original_op
         self.AAt = self.original_op @ self.original_op.T
-
-        # Define matvec and rmatvec
-        def _matvec(x):
-            if self.which == "scipy":
-                sol, converged = scipy_cg(self.AtA, self.original_op.T @ x, x0=self.prev_eval, *args, **kwargs) 
-                assert converged == 0, "CG algorithm did not converge!"
-            elif self.which == "jlinops":
-                solver_data = cg(self.AtA, self.original_op.T @ x, x0=self.prev_eval, *args, **kwargs)
-                sol = solver_data["x"]
-            else:
-                raise ValueError
-
-            if self.warmstart_prev:
-                self.prev_eval = sol.copy()
-
-            return sol
         
-        def _rmatvec(x):
-
-            # Project x onto range(A^T A) = range(A^T).
-            x = x - (self.W @ (self.Wpinv @ x))
-
-            if self.which == "scipy":
-                sol, converged = scipy_cg(self.AtA, x, x0=self.prev_eval_t, *args, **kwargs) 
-                assert converged == 0, "CG algorithm did not converge!"
-            elif self.which == "jlinops":
-                solver_data = cg(self.AtA, x, x0=self.prev_eval_t, *args, **kwargs)
-                sol = solver_data["x"]
-            else:
-                raise ValueError
-
-            if self.warmstart_prev:
-                self.prev_eval_t = sol.copy()
+        
+        if device == "cpu":
+            
+            if self.which == "jlinops":
                 
-            return self.original_op @ sol
+                def _matvec(x):
+                    solver_data = jlinops_cg(self.AtA, self.A.rmatvec(x), x0=self.prev_eval, *args, **kwargs)
+                    sol = solver_data["x"]
+                    if self.check:
+                        assert solver_data["converged"], "CG algorithm did not converge"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                    
+                    return sol
+                
+                def _rmatvec(x):
+                    
+                    # Project x onto range(A^T A) = range(A^T).
+                    x = x - (W @ (Wpinv @ x))
+                    
+                    solver_data = jlinops_cg(self.AtA, x, x0=self.prev_eval_t, *args, **kwargs)
+                    sol = solver_data["x"]
+                    if self.check:
+                        assert solver_data["converged"], "CG algorithm did not converge"
+                        
+                    if self.warmstart_prev:
+                        self.prev_eval_t = sol.copy()
+                        
+                    return self.A @ sol
         
-        super().__init__( (self.out_shape, self.in_shape), _matvec, _rmatvec )
+            elif self.which == "scipy":
+                
+                def _matvec(x):
+                    sol, converged = scipy_cg(self.AtA, self.A.rmatvec(x), x0=self.prev_eval, *args, **kwargs) 
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
+                        
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                    
+                    return sol
+                
+                def _rmatvec(x):
+                    
+                    # Project x onto range(A^T A) = range(A^T).
+                    x = x - (W @ (Wpinv @ x))
+                    
+                    sol, converged = scipy_cg(self.AtA, x, x0=self.prev_eval_t, *args, **kwargs) 
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval_t = sol.copy()
+                    
+                    return self.A @ sol
+                
+            else:
+                raise NotImplementedError
+                
+        else:
+            
+            
+            if self.which == "jlinops":
+                
+                def _matvec(x):
+                    solver_data = jlinops_cg(self.AtA, self.A.rmatvec(x), x0=self.prev_eval, *args, **kwargs)
+                    sol = solver_data["x"]
+                    if self.check:
+                        assert solver_data["converged"], "CG algorithm did not converge"
+                        
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                        
+                    return sol
+                
+                def _rmatvec(x):
+                    
+                    # Project x onto range(A^T A) = range(A^T).
+                    x = x - (W @ (Wpinv @ x))
+                    
+                    solver_data = jlinops_cg(self.AtA, x, x0=self.prev_eval_t, *args, **kwargs)
+                    sol = solver_data["x"]
+                    if self.check:
+                        assert solver_data["converged"], "CG algorithm did not converge"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval_t = sol.copy()
+                    
+                    return self.A @ sol
+        
+            elif self.which == "scipy":
+                
+                def _matvec(x):
+                    sol, converged = cupy_cg(self.AtA, self.A.rmatvec(x), x0=self.prev_eval, *args, **kwargs) 
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                        
+                    return sol
+                
+                def _rmatvec(x):
+                    
+                    # Project x onto range(A^T A) = range(A^T).
+                    x = x - (W @ (Wpinv @ x))
+                    
+                    sol, converged = cupy_cg(self.AtA, x, x0=self.prev_eval_t, *args, **kwargs) 
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
+                    
+                    if self.warmstart_prev:
+                        self.prev_eval_t = sol.copy()
+                        
+                    return self.A @ sol
+                
+            else:
+                raise NotImplementedError
+            
+            
+        super().__init__( self.A.shape, _matvec, _rmatvec, device=device, dtype=self.A.dtype)
+        
+        
+        
+    def to_gpu(self):
+        return CGModPinvOperator(self.A.to_gpu(), self.W.to_gpu(), self.Wpinv.to_gpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
+    
+    def to_cpu(self):
+        return CGPModinvOperator(self.A.to_cpu(), self.W.to_cpu(), self.Wpinv.to_cpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
 
-
+        
+        
+        
 
 
 class CGPreconditionedPseudoinverseOperator(_CustomLinearOperator):
@@ -274,35 +571,46 @@ class CGPreconditionedPseudoinverseOperator(_CustomLinearOperator):
 
 
 
-
-class CGWeightedDiscreteGradientNeumann2DPseudoinverse(_CustomLinearOperator):
+class CGWeightedNeumann2DPinvOperator(_CustomLinearOperator):
     """Represents the pseudoinverse (R_w)^\dagger of a linear operator R_w = D_w R, where
     D_w is a diagonal matrix of weights and R is a DiscreteGradientNeumann2D operator.
     Here matvecs/rmatvecs are applied approximately using a preconditioned conjugate
     gradient method, where the preconditioner is based on the operator with identity weights. 
     """
 
-    def __init__(self, grid_shape, weights, warmstart_prev=True, which="jlinops", *args, **kwargs):
+    def __init__(self, grid_shape, weights, warmstart_prev=True, check=False, which="jlinops", *args, **kwargs):
 
         assert 2*math.prod(grid_shape) == len(weights), "Weights incompatible!"
         self.weights = weights
-        self.grid_size = grid_shape
+        self.grid_shape = grid_shape
+        self.warmstart_prev = warmstart_prev
+        self.check = check
+        self.which = which
+        self.args = args
+        self.kwargs = kwargs
+        
+        # Figure out device
+        device = get_device(weights)
 
         # Build R_w
-        self.R = DiscreteGradientNeumann2D(grid_shape)
+        self.R = Neumann2D(grid_shape, device=device)
         self.Dw = DiagonalOperator(weights)
         self.Rw = self.Dw @ self.R
 
         # Get Rpinv (with identity weights)
-        self.Rpinv = build_dct_Lpinv(self.R.T @ self.R, grid_shape)
+        self.Rpinv = dct_sqrt_pinv(self.R.T @ self.R, grid_shape)
 
         # Take care of W (columns span the kernel of R)
-        W = np.ones((self.R.shape[1],1))
-        self.W = MatrixOperator(W)
+        if device == "cpu":
+            W = np.ones((self.R.shape[1],1))
+        else:
+            W = cp.ones((self.R.shape[1],1))
+            
+        self.W = MatrixLinearOperator(W)
         self.Wpinv = QRPseudoInverseOperator(self.W)
 
         # Make Rwpinv
-        self.Rwpinv = CGPreconditionedPseudoinverseOperator(self.Rw, self.W, self.Wpinv, self.Rpinv, warmstart_prev=warmstart_prev, which=which, *args, **kwargs)
+        self.Rwpinv = CGPreconditionedPinvOperator(self.Rw, self.W, self.Wpinv, self.Rpinv, warmstart_prev=warmstart_prev, check=check, which=which, *args, **kwargs)
 
         def _matvec(x):
             return self.Rwpinv @ x
@@ -310,5 +618,14 @@ class CGWeightedDiscreteGradientNeumann2DPseudoinverse(_CustomLinearOperator):
         def _rmatvec(x):
             return self.Rwpinv.T @ x
 
-        super().__init__( self.Rwpinv.shape, _matvec, _rmatvec, dtype=np.float64)
+        super().__init__( self.Rwpinv.shape, _matvec, _rmatvec, dtype=np.float64, device=device)
+        
 
+    def to_gpu(self):
+        return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.asarray(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
+    
+    def to_cpu(self):
+        return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.numpy(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
+
+        
+        
