@@ -22,6 +22,8 @@ from .derivatives import *
 from .linalg import *
 from .linear_solvers import *
 from .cginv import *
+from .pseudoinverse import *
+from .oblique import *
 
 
 

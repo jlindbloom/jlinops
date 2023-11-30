@@ -7,8 +7,8 @@ from scipy.linalg import solve_triangular as sp_solve_triangular
 import scipy.sparse as sps
 
 
-from .matrix import MatrixLinearOperator, _CustomLinearOperator 
-from .util import banded_cholesky
+from .base import MatrixLinearOperator, _CustomLinearOperator 
+from .linalg import banded_cholesky
 from .diagonal import DiagonalOperator
 from .derivatives import Neumann2D
 from .linalg import dct_sqrt_pinv
@@ -674,31 +674,6 @@ class CGPreconditionedPinvOperator(_CustomLinearOperator):
         
     def to_cpu(self):
         return CGPreconditionedPinvOperator(self.A.to_cpu(), self.W.to_cpu(), self.Wpinv.to_cpu(), self.Lpinv.to_cpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
     
     
     
