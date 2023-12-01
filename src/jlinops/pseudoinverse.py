@@ -11,7 +11,7 @@ from .base import MatrixLinearOperator, _CustomLinearOperator
 from .linalg import banded_cholesky
 from .diagonal import DiagonalOperator
 from .derivatives import Neumann2D
-from .linalg import dct_sqrt_pinv
+from .linalg import dct_sqrt_pinv, dct_pinv
 from .linear_solvers import cg
 
 
@@ -111,8 +111,11 @@ class QRPinvOperator(_CustomLinearOperator):
 
     def __init__(self, A):
 
-        assert isinstance(A, MatrixLinearOperator), "must give MatrixOperator as an input."
+        #assert isinstance(A, MatrixLinearOperator), "must give MatrixOperator as an input."
 
+        if not isinstance(A, MatrixLinearOperator):
+            A = MatrixLinearOperator(A)
+        
         # Store original operator
         self.original_op = A
         k, n = A.shape
@@ -166,7 +169,7 @@ class CGPinvOperator(_CustomLinearOperator):
     a conjugate gradient method.
     """
 
-    def __init__(self, A, warmstart_prev=False, which="jlinops", check=False, *args, **kwargs):
+    def __init__(self, A, warmstart_prev=False, which="scipy", check=False, *args, **kwargs):
 
         assert which in ["jlinops", "scipy"], "Invalid choice for which!"
 
@@ -327,7 +330,7 @@ class CGModPinvOperator(_CustomLinearOperator):
     Wpinv: a LinearOperator represening the pseudoinverse of W.
     """
 
-    def __init__(self, A, W, Wpinv, warmstart_prev=False, which="jlinops", check=False, *args, **kwargs):
+    def __init__(self, A, W, Wpinv, warmstart_prev=False, which="scipy", check=False, *args, **kwargs):
 
         assert which in ["jlinops", "scipy"], "Invalid choice for which!"
 
@@ -508,7 +511,7 @@ class CGPreconditionedPinvOperator(_CustomLinearOperator):
     Lpinv: 
     """
 
-    def __init__(self, A, W, Wpinv, Lpinv, warmstart_prev=True, check=False, which="jlinops", *args, **kwargs):
+    def __init__(self, A, W, Wpinv, Lpinv, warmstart_prev=True, check=False, which="scipy", *args, **kwargs):
 
         assert which in ["jlinops", "scipy"], "Invalid choice for which!"
 
@@ -674,6 +677,105 @@ class CGPreconditionedPinvOperator(_CustomLinearOperator):
         
     def to_cpu(self):
         return CGPreconditionedPinvOperator(self.A.to_cpu(), self.W.to_cpu(), self.Wpinv.to_cpu(), self.Lpinv.to_cpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
+    
+    
+
+    
+    
+class Neumann2DPinvOperator(_CustomLinearOperator):
+    """Represents the pseudoinverse R^\dagger where R is a Neumann2D operator.
+    Here matvecs/rmatvecs are applied using a DCT transform method. 
+    """
+    
+    def __init__(self, grid_shape, device="cpu", eps=1e-14):
+        
+        # Grid shape
+        self.grid_shape = grid_shape
+        self.eps = eps
+        
+        # Neumann2D operator
+        self.R = Neumann2D(grid_shape, device=device)
+        self.Apinv = dct_pinv(self.R.T @ self.R, grid_shape, eps=self.eps)
+        
+        def _matvec(x):
+            return self.Apinv.matvec(x)
+
+        def _rmatvec(x):
+            return self.Apinv.rmatvec(x)
+        
+        super().__init__( self.Apinv.shape, _matvec, _rmatvec, dtype=np.float64, device=device)
+        
+    def to_gpu(self):
+        return Neumann2DPinvOperator(self.grid_shape, device="gpu", eps=self.eps)
+    
+    def to_cpu(self):
+        return Neumann2DPinvOperator(self.grid_shape, device="cpu", eps=self.eps)
+
+    
+    
+
+    
+    
+    
+class CGWeightedNeumann2DPinvOperator(_CustomLinearOperator):
+    """Represents the pseudoinverse (R_w)^\dagger of a linear operator R_w = D_w R, where
+    D_w is a diagonal matrix of weights and R is a Neumann2D operator.
+    Here matvecs/rmatvecs are applied approximately using a preconditioned conjugate
+    gradient method, where the preconditioner is based on the operator with identity weights. 
+    """
+
+    def __init__(self, grid_shape, weights, warmstart_prev=True, check=False, which="scipy", *args, **kwargs):
+
+        assert 2*math.prod(grid_shape) == len(weights), "Weights incompatible!"
+        self.weights = weights
+        self.grid_shape = grid_shape
+        self.warmstart_prev = warmstart_prev
+        self.check = check
+        self.which = which
+        self.args = args
+        self.kwargs = kwargs
+        
+        # Figure out device
+        device = get_device(weights)
+
+        # Build R_w
+        self.R = Neumann2D(grid_shape, device=device)
+        self.Dw = DiagonalOperator(weights)
+        self.Rw = self.Dw @ self.R
+
+        # Get Rpinv (with identity weights)
+        self.Rpinv = dct_sqrt_pinv(self.R.T @ self.R, grid_shape)
+
+        # Take care of W (columns span the kernel of R)
+        if device == "cpu":
+            W = np.ones((self.R.shape[1],1))
+        else:
+            W = cp.ones((self.R.shape[1],1))
+            
+        self.W = MatrixLinearOperator(W)
+        self.Wpinv = QRPinvOperator(self.W)
+
+        # Make Rwpinv
+        self.Rwpinv = CGPreconditionedPinvOperator(self.Rw, self.W, self.Wpinv, self.Rpinv, warmstart_prev=warmstart_prev, check=check, which=which, *args, **kwargs)
+
+        def _matvec(x):
+            return self.Rwpinv.matvec(x)
+
+        def _rmatvec(x):
+            return self.Rwpinv.rmatvec(x)
+
+        super().__init__( self.Rwpinv.shape, _matvec, _rmatvec, dtype=np.float64, device=device)
+        
+
+    def to_gpu(self):
+        return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.asarray(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
+    
+    def to_cpu(self):
+        return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.numpy(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
+
+    
+    
+    
     
     
     

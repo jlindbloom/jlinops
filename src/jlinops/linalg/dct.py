@@ -96,6 +96,30 @@ def dct_sqrt(A, grid_shape):
 
 
 
+def dct_pinv(A, grid_shape, eps=1e-14):
+    """Given a LinearOperator A that is diagonalized by the DCT, performs the diagonalization (computes eigenvalues), returns a LinearOperator representing A^\dagger (pseudoinverse).
+    """
+    # Get eigenvalues
+    eigvals = dct_get_eigvals(A, grid_shape)
+    device = get_device(eigvals)
+
+    # Take reciprocals of nonzero eigenvalues
+    if device == "cpu":
+        recip_eigvals = np.where( np.abs(eigvals) < 1e-14, eigvals, 1.0 / np.clip(eigvals, a_min=eps, a_max=None) )
+        recip_eigvals = np.where( np.abs(eigvals) < 1e-14, np.zeros_like(eigvals), recip_eigvals )
+    else:
+        recip_eigvals = cp.where( cp.abs(eigvals) < 1e-14, eigvals, 1.0 / cp.clip(eigvals, a_min=eps, a_max=None) )
+        recip_eigvals = cp.where( cp.abs(eigvals) < 1e-14, cp.zeros_like(eigvals), recip_eigvals )
+    
+    # DCT op
+    P = DCT2D(grid_shape, device=device)
+    
+    # Apinv op
+    Apinv = P.T @ ( DiagonalOperator(recip_eigvals) @ P)
+    
+    return Apinv
+
+
 def dct_sqrt_pinv(A, grid_shape, eps=1e-14):
     """Given a LinearOperator A that is diagonalized by the DCT, performs the diagonalization (computes eigenvalues),
     computes the square root L in A = L L^T, and returns a LinearOperator representing L^\dagger (pseudoinverse).

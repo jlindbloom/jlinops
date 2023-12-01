@@ -16,7 +16,7 @@ class CGInverseOperator(_CustomLinearOperator):
     """Represents an approximation to the inverse operator of an input SPD or SSPD (with care) LinearOperator,
     """
 
-    def __init__(self, operator, warmstart_prev=True, which="jlinops", check=False, *args, **kwargs):
+    def __init__(self, operator, warmstart_prev=True, which="scipy", check=False, *args, **kwargs):
 
         assert which in ["jlinops", "scipy"], "Invalid choice for which!"
 
@@ -85,10 +85,10 @@ class CGInverseOperator(_CustomLinearOperator):
         
         
     def to_gpu(self):
-        return CGInverseOperator(operator.to_gpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
+        return CGInverseOperator(self.original_op.to_gpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
     
     def to_cpu(self):
-        return CGInverseOperator(operator.to_cpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
+        return CGInverseOperator(self.original_op.to_cpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
 
 
 

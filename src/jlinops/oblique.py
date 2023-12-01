@@ -1,10 +1,10 @@
 from .pseudoinverse import QRPinvOperator
-from .base import IdentityOperator
+from .base import IdentityOperator, MatrixLinearOperator
 from .util import check_adjoint
 
 
 
-def build_oblique_pinv(X, Y, Ypinv, W, XWpinv=None, check=False):
+def build_oblique_pinv(X, Ypinv, W, XWpinv=None, check=False):
     """Returns a linear operator representing the oblique pseudoinverse relative to X and Y.
     The kernels of X and Y must intersect trivially.
     
@@ -17,11 +17,11 @@ def build_oblique_pinv(X, Y, Ypinv, W, XWpinv=None, check=False):
     
     # If XWpinv not passed, build using QR pseudoinverse method
     if XWpinv is None:
-        XWpinv = QRPinvOperator( X.dot(W.A) )
+        XWpinv = QRPinvOperator( MatrixLinearOperator(X.dot(W.A)) )
     
     # Build op
     n = X.shape[1]
-    identity = IdentityOperator( (n,n) ) 
+    identity_op = IdentityOperator( (n,n) ) 
     oblique_pinv = (identity_op - (W @ (XWpinv @ X ) ) ) @ Ypinv
     
     # Check if necessary

@@ -646,6 +646,12 @@ class _AdjointLinearOperator(LinearOperator):
 
     def _rmatmat(self, x):
         return self.A._matmat(x)
+    
+    def to_gpu(self):
+        return _AdjointLinearOperator(self.A.to_gpu())
+    
+    def to_cpu(self):
+        return _AdjointLinearOperator(self.A.to_cpu())
 
 
 
@@ -671,6 +677,13 @@ class _TransposedLinearOperator(LinearOperator):
 
     def _rmatmat(self, x):
         return np.conj(self.A._matmat(np.conj(x)))
+    
+    def to_gpu(self):
+        return _TransposedLinearOperator(self.A.to_gpu())
+    
+    def to_cpu(self):
+        return _TransposedLinearOperator(self.A.to_cpu())
+    
 
 def _get_dtype(operators, dtypes=None):
     if dtypes is None:
@@ -843,7 +856,15 @@ class _PowerLinearOperator(LinearOperator):
 
 class MatrixLinearOperator(LinearOperator):
     def __init__(self, A):
-        super().__init__(A.dtype, A.shape, device=get_device(A))
+        
+        device = get_device(A)
+        if A.ndim == 1:
+            if device == "cpu":
+                A = np.atleast_2d(A).T
+            else:
+                A = cp.asleast_2d(A).T
+            
+        super().__init__(A.dtype, A.shape, device=device)    
         self.A = A
         self.__adj = None
         self.args = (A,)
