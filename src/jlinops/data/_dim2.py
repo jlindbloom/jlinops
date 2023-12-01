@@ -1,25 +1,21 @@
-from __future__ import annotations
-
 import os
 import numpy
 import numpy as np
 from PIL import Image, ImageOps, ImageFilter
 import matplotlib.pyplot as plt
 
-import hsip
-
-
+import jlinops
 
 def read_image(fname: str, normalize: bool = True, grayscale: bool = True) -> np.ndarray:
     """
     Reads
 
-    :param fname: name of the image file located in ``\hsip\data\images``.
+    :param fname: name of the image file located in ``\jlinops\data\images``.
     :param normalize: whether to normalize the image so that all channels lie in [0,1].
     :param grayscale: whether to convert the image to grayscale.
     """    
 
-    path = os.path.join(os.path.dirname(hsip.__file__), "data/images")
+    path = os.path.join(os.path.dirname(jlinops.__file__), "data/images")
     path = os.path.join(path, fname)
     img = Image.open(path)
 
@@ -59,7 +55,7 @@ def shepplogan(**kwargs) -> np.ndarray:
     """
     Returns the Shepp-Logan phantom test image.
     """
-    return read_image("SheppLogan_phantom.png", **kwargs)
+    return read_image("SheppLogan_Phantom.png", **kwargs)
 
 
 def fingerprint(**kwargs) -> np.ndarray:

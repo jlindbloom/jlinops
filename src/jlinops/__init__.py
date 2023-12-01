@@ -11,7 +11,7 @@ except:
 # Imports
 from .util import *
 from .base import *
-from .base import _CustomLinearOperator
+from .base import _CustomLinearOperator, _AdjointLinearOperator
 from .linalg import *
 from .diagonal import *
 from .blurring import *
@@ -24,6 +24,7 @@ from .linear_solvers import *
 from .cginv import *
 from .pseudoinverse import *
 from .oblique import *
+from .data import *
 
 
 
