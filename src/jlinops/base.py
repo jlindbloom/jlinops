@@ -342,8 +342,11 @@ class LinearOperator:
 
         if isinstance(Y, np.matrix):
             Y = asmatrix(Y)
-        elif isinstance(Y, cp.ndarray):
-            Y = asmatrix(Y)
+        elif CUPY_INSTALLED:
+            if isinstance(Y, cp.ndarray):
+                Y = asmatrix(Y)
+        else:
+            pass
 
         return Y
 
