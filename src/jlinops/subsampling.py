@@ -55,7 +55,7 @@ class Subsampling1DOperator(_CustomLinearOperator):
 
             def _rmatvec(x):
                 tmp = np.zeros(n)
-                tmp[self.idxs_observed] = x
+                tmp[self.idxs_observed] = np.squeeze(x)
                 return tmp
         else:
             
@@ -65,7 +65,7 @@ class Subsampling1DOperator(_CustomLinearOperator):
 
             def _rmatvec(x):
                 tmp = cp.zeros(n)
-                tmp[self.idxs_observed] = x
+                tmp[self.idxs_observed] = cp.squeeze(x)
                 return tmp
             
             

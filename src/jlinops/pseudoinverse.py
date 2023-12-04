@@ -4,6 +4,7 @@ import math
 from scipy.linalg import solve_triangular as scipy_solve_triangular
 from scipy.linalg import qr as sp_qr
 from scipy.linalg import solve_triangular as sp_solve_triangular
+from scipy.sparse.linalg import SuperLU as sp_SuperLU
 import scipy.sparse as sps
 
 
@@ -13,6 +14,7 @@ from .diagonal import DiagonalOperator
 from .derivatives import Neumann2D
 from .linalg import dct_sqrt_pinv, dct_pinv
 from .linear_solvers import cg
+from .util import issparse, tosparse
 
 
 from . import CUPY_INSTALLED
@@ -20,6 +22,7 @@ if CUPY_INSTALLED:
     import cupy as cp
     from cupyx.scipy.linalg import solve_triangular as cp_solve_triangular
     from cupy.linalg import qr as cp_qr
+    from cupyx.scipy.sparse.linalg import SuperLU as cp_SuperLU
 
 
 
@@ -58,7 +61,7 @@ class BandedCholeskyPinvOperator(_CustomLinearOperator):
         # Matrix we will factorize
         mat = AtA_cpu.A + self.delta*sps.eye(n)
         
-        if superlu is None:
+        if _superlu is None:
             
             # Perform factorization
             chol_fac, superlu = banded_cholesky( mat )
@@ -68,6 +71,7 @@ class BandedCholeskyPinvOperator(_CustomLinearOperator):
                 superlu = cp_SuperLU(superlu)
                 
         else: 
+            superlu = _superlu
             pass
         
         
@@ -95,7 +99,7 @@ class BandedCholeskyPinvOperator(_CustomLinearOperator):
         # Switch to CPU superlu
         superlu = cp_SuperLU(self.superlu)
         
-        return BandedCholeskyPinvOperator(A.to_gpu(), delta=self.delta, _superlu=superlu)
+        return BandedCholeskyPinvOperator(self._matvecA.to_gpu(), delta=self.delta, _superlu=superlu)
     
     
     def to_cpu(self):

@@ -16,3 +16,13 @@ def sin_trapezoid():
     toy_sig += 3
 
     return toy_sig
+
+def piecewise_constant_1d_test_problem():
+    """Generates a piecewise constant 1D test vector. From Beck 12.4.3.
+    """
+    n = 1000
+    result = np.zeros(n)
+    result[:250] = 1
+    result[250:500] = 3
+    result[750:] = 2
+    return result

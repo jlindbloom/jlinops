@@ -12,6 +12,8 @@ from scipy.sparse._sputils import isshape as sp_isshape
 from scipy.sparse._sputils import asmatrix as sp_asmatrix
 from scipy.sparse import csc_matrix
 
+from fastprogress import progress_bar
+
 
 from . import CUPY_INSTALLED
 if CUPY_INSTALLED:
@@ -75,11 +77,11 @@ def tosparse(x):
         device = get_device(x)
         if device == "cpu":
 
-            return csc_matrix(x)
+            return csc_matrix(x, dtype=np.float64)
 
         else:
 
-            return cpsparse.csc_matrix(x)
+            return cpsparse.csc_matrix(x, dtype=cp.float64)
         
         
         
@@ -201,6 +203,82 @@ def check_adjoint(op, n_rand_vecs=25, tol=1e-1):
                 is_correct_adjoint = False
                 
     return is_correct_adjoint
+
+
+
+def black_box_to_dense(A):
+    """Given a m x n LinearOperator A, returns a dense matrix B representing A computed using
+    m x n multiplications with A.
+    """
+
+    # Get shape
+    m, n = A.shape
+
+    # Result array
+    B = np.zeros((m,n))
+
+    for i in range(m):
+        ei = np.zeros(m)
+        ei[i] = 1.0
+        for j in range(n):
+            ej = np.zeros(n)
+            ej[j] = 1.0
+            B[i,j] = np.dot(ei.T, A.matvec(ej))
+
+    return B
+
+
+
+def duck_test(A, B, n_rand_vecs = 25, tol=1e-3):
+    """Checks whether A and B have same shape, then checks whether or 
+    not the actions of two LinearOperators A and B are the same vectors (within tolerance) on a set of random vectors.
+    """
+
+    # Must have same shape to begin with!
+    mA, nA = A.shape
+    mB, nB = B.shape
+
+    if mA != mB:
+        return False
+    
+    if nA != nB:
+        return False 
+    
+    # Check random vectors
+    device = A.device
+    passed = True
+
+    for j in range(n_rand_vecs):
+
+        if device == "cpu":
+            u = np.random.normal(size=A.shape[1])
+            resid = (A.matvec(u) - B.matvec(u))
+            resid_norm = np.linalg.norm(resid)
+        else:
+            u = cp.random.normal(size=A.shape[1])
+            resid = (A.matvec(u) - B.matvec(u))
+            resid_norm = cp.linalg.norm(resid)
+
+        if resid_norm > tol:
+            passed = False
+
+    return passed
+
+
+
+def black_box_diagonal(A):
+    """Given a square black box LinearOperator A, uses n matvecs with A to compute its diagonal.
+    """
+
+    n = A.shape[1]
+    diag = np.zeros(n)
+
+    for j in progress_bar(range(n)):
+        tmp = np.zeros(n)
+        tmp[j] = 1.0
+        diag[j] = np.dot(tmp, A @ tmp )
+
+    return diag
 
 
 

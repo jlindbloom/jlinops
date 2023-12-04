@@ -3,7 +3,7 @@
 import sys
 from cycler import cycler
 
-from ._dim1 import sin_trapezoid
+from ._dim1 import sin_trapezoid, piecewise_constant_1d_test_problem
 from ._dim2 import read_image, ge, cameraman, grandcanyon, shepplogan, seaice, fingerprint, cortex, satellite, mri, graecolatinsquare, sar1, sar2
 
 
@@ -21,7 +21,8 @@ __all__ = [
     "sin_trapezoid",
     "graecolatinsquare",
     "sar1",
-    "sar2"
+    "sar2",
+    "piecewise_constant_1d_test_problem",
 ]
 
 

@@ -923,6 +923,8 @@ class _AdjointMatrixOperator(MatrixLinearOperator):
 
 class IdentityOperator(LinearOperator):
     def __init__(self, shape, dtype=None, device="cpu"):
+        m, n = shape
+        assert m == n, "shape must be square for IdentityLinearOperator."
         super().__init__(dtype, shape, device=device)
 
     def _matvec(self, x):
