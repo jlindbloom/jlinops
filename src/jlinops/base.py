@@ -891,6 +891,8 @@ class MatrixLinearOperator(LinearOperator):
                 return MatrixLinearOperator(cpsparse.coo_matrix(self.args[0]))
             elif fmt == "dia":
                 return MatrixLinearOperator(cpsparse.dia_matrix(self.args[0]))
+            elif fmt == "lil":
+                return MatrixLinearOperator(cpsparse.csc_matrix(self.args[0]))
             else:
                 raise NotImplementedError
         else:

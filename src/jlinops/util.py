@@ -46,6 +46,15 @@ def get_device(x):
             return "gpu"
         else:
             return "cpu"
+        
+        
+def get_module(x):
+    """Returns a reference to NumPy if x is on cpu, to CuPy if x on GPU.
+    """
+    if not CUPY_INSTALLED:
+        return np
+    else:
+        return cp.get_array_module(x)
 
 
         

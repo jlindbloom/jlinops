@@ -10,7 +10,7 @@ from ..base import MatrixLinearOperator
 from .. import CUPY_INSTALLED
 if CUPY_INSTALLED:
     import cupy as cp
-    from cupyx.scipy.sparse.linalg import eigs as cp_eigs
+    #from cupyx.scipy.sparse.linalg import eigs as cp_eigs
     from cupyx.scipy.sparse.linalg import eigsh as cp_eigsh
     from cupyx.scipy.sparse.linalg import svds as cp_svds
     import cupyx.scipy.sparse as csps
@@ -81,7 +81,8 @@ def eigs(A, *args, **kwargs):
     if device == "cpu":
         return sp_eigs(A, *args, **kwargs)
     else:
-        return cp_eigs(A, *args, **kwargs)
+        raise NotImplementedError
+        #return cp_eigs(A, *args, **kwargs)
 
 
 
