@@ -102,7 +102,6 @@ def graecolatinsquare(which=3, **kwargs) -> np.ndarray:
     return read_image(f"graecolatinsquare{which}.png", **kwargs)
 
 
-
 def sar1(**kwargs) -> np.ndarray:
     """
     Returns the sar1 square test image.
@@ -115,6 +114,12 @@ def sar2(**kwargs) -> np.ndarray:
     Returns the sar2 square test image.
     """
     return read_image("sar2.png", **kwargs)
+
+def meme(**kwargs) -> np.ndarray:
+    """
+    Returns the meme test image.
+    """
+    return read_image("meme.jpg", **kwargs)
 
 
 
