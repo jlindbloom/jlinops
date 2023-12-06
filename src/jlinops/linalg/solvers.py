@@ -109,26 +109,27 @@ def cgls(A, b, x0=None, maxiter=None, return_search_vectors=False,
 
 
 
-def rlstsq(A, b, lam=1.0, *args, **kwargs):
+def rlstsq(A, b, lam=1.0, shift=None, *args, **kwargs):
     """Solves the regularized least-squares problem
-    min_x || A x - b ||_2^2 + lam*|| x ||_2^2
+    min_x || A x - b ||_2^2 + lam*|| x - shift ||_2^2
     using a CGLS method.
     """
     # Build Atilde
     device = A.device
     xp = device_to_module(device)
     n = A.shape[1]
-    Atilde = StackedOperator([A, np.sqrt(lam)*IdentityOperator((n,n), device=device)])
-    zeros = xp.zeros(n)
-    rhs = xp.hstack([b, zeros])
+    Atilde = StackedOperator([A, xp.sqrt(lam)*IdentityOperator((n,n), device=device)])
+    if shift is None:
+        shift = xp.zeros(n)
+    rhs = xp.hstack([b, xp.sqrt(lam)*shift])
     data = cgls(Atilde, rhs, *args, **kwargs)
     return data
 
 
 
-def trlstsq(A, R, b, lam=1.0, *args, **kwargs):
+def trlstsq(A, R, b, lam=1.0, shift=None, *args, **kwargs):
     """Solves the regularized least-squares problem
-    min_x || A x - b ||_2^2 + lam*|| R x ||_2^2
+    min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
     using a CGLS method. It is assumed that
     null(A) and null(R) intersect trivially.
     """
@@ -138,15 +139,23 @@ def trlstsq(A, R, b, lam=1.0, *args, **kwargs):
     n = A.shape[1]
     Atilde = StackedOperator([A, np.sqrt(lam)*R])
     zeros = xp.zeros(R.shape[0])
-    rhs = xp.hstack([b, zeros])
+    
+    if shift is None:
+        shift = xp.zeros(n)
+    
+    # If R is none, assume we mean identity (so really, not transformed at all)
+    if R is None:
+        R = IdentityOperator((n,n), device=device)
+        
+    rhs = xp.hstack([b, xp.sqrt(lam)*shift])
     data = cgls(Atilde, rhs, *args, **kwargs)
     return data
 
 
 
-def trlstsq_rinv(A, Rinv, b, lam=1.0, *args, **kwargs):
+def trlstsq_rinv(A, Rinv, b, lam=1.0, shift=None, *args, **kwargs):
     """Solves the regularized least-squares problem
-    min_x || A x - b ||_2^2 + lam*|| R x ||_2^2
+    min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
     using a transformation to standard form + a CGLS method. 
     It is assumed that null(A) and null(R) intersect trivially,
     and additionally that R is square invertible.
@@ -156,8 +165,12 @@ def trlstsq_rinv(A, Rinv, b, lam=1.0, *args, **kwargs):
     xp = device_to_module(device)
     n = A.shape[1]
     
+#     # If Rinv is none, assume we mean identity (so really, not transformed at all)
+#     if Rinv is None:
+#         Rinv = IdentityOperator((n,n), device=device)
+    
     Atilde = A @ Rinv 
-    data = rlstsq(Atilde, b, lam=lam, *args, **kwargs)
+    data = rlstsq(Atilde, b, shift=shift, lam=lam, *args, **kwargs)
     
     # Transform solution and overwrite cgls_data
     data["z"] = data["x"].copy() # z is new coordinate
@@ -168,9 +181,9 @@ def trlstsq_rinv(A, Rinv, b, lam=1.0, *args, **kwargs):
 
 
 
-def trlstsq_rtker(A, Rpinv, b, lam=1.0, chol_fac=False, *args, **kwargs):
+def trlstsq_rtker(A, Rpinv, b, lam=1.0, shift=None, chol_fac=False, R=None, *args, **kwargs):
     """Solves the regularized least-squares problem
-    min_x || A x - b ||_2^2 + lam*|| R x ||_2^2
+    min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
     using a transformation to standard form + a CGLS method. 
     It is assumed that null(A) and null(R) intersect trivially,
     and additionally that R has a trivial kernel (but possibly
@@ -181,11 +194,18 @@ def trlstsq_rtker(A, Rpinv, b, lam=1.0, chol_fac=False, *args, **kwargs):
     """
     # Build Atilde
     device = A.device
-    xp = jlinops.device_to_module(device)
+    xp = device_to_module(device)
     n = A.shape[1]
     
     Atilde = A @ Rpinv 
-    data = jlinops.rlstsq(Atilde, b, lam=lam, *args, **kwargs)
+    if shift is not None:
+        assert R is not None, "R must be provided."
+        if not chol_fac:
+            shift = R @ (Rpinv @ shift)
+        else:
+            shift = Rpinv.rmatvec(R.rmatvec(shift))
+        
+    data = rlstsq(Atilde, b, lam=lam, shift=shift, *args, **kwargs)
     
     # Transform solution and overwrite cgls_data
     data["z"] = data["x"].copy() # z is new coordinate
@@ -196,38 +216,9 @@ def trlstsq_rtker(A, Rpinv, b, lam=1.0, chol_fac=False, *args, **kwargs):
 
 
 
-
-
-
-
-def trlstsq_rtker(A, Rinv, b, lam=1.0, *args, **kwargs):
+def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, shift=None, R=None, *args, **kwargs):
     """Solves the regularized least-squares problem
-    min_x || A x - b ||_2^2 + lam*|| R x ||_2^2
-    using a transformation to standard form + a CGLS method. 
-    It is assumed that null(A) and null(R) intersect trivially,
-    and additionally that R has a trivial kernel (but possibly
-    non-square).
-    """
-    # Build Atilde
-    device = A.device
-    xp = device_to_module(device)
-    n = A.shape[1]
-    
-    Atilde = A @ Rinv 
-    data = rlstsq(Atilde, b, lam=lam, *args, **kwargs)
-    
-    # Transform solution and overwrite cgls_data
-    data["z"] = data["x"].copy() # z is new coordinate
-    x = Rinv @ data["x"]
-    data["x"] = x
-    
-    return data
-
-
-
-def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, chol_fac=False, *args, **kwargs):
-    """Solves the regularized least-squares problem
-    min_x || A x - b ||_2^2 + lam*|| R x ||_2^2
+    min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
     using a transformation to standard form + a CGLS method. 
     It is assumed that null(A) and null(R) intersect trivially,
     and additionally that R has a nontrivial kernel.
@@ -249,7 +240,11 @@ def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, chol_fac=False, *args, 
     
     # Get contribution from complement
     Atilde = A @ oblique_pinv
-    data = rlstsq(Atilde, b, lam=lam, *args, **kwargs)
+    if shift is not None:
+        assert R is not None, "R must be provided."
+        shift = R @ (Rpinv @ shift)
+
+    data = rlstsq(Atilde, b, lam=lam, shift=shift, *args, **kwargs)
     
     # Transform solution and overwrite cgls_data
     data["z"] = data["x"].copy() # z is transformed coordinate
@@ -264,5 +259,38 @@ def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, chol_fac=False, *args, 
 
 
 
+
+def trlstsq_standard_form(A, b, Rinv=None, Rpinv=None, W=None, chol_fac=None, **kwargs):
+    """Solves the regularized least-squares problem
+    min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
+    using a transformation to standard form + a CGLS method.
+    
+    This function wraps the standard form solvers for the different
+    cases dependent on R. These include:
+    
+    R invertible: trlstsq_rinv
+    R not invertible but trivial kernel: trlstsq_rtker
+    R has trivial kernel: trlstsq_rntker
+    """
+    
+    # assert not ( (R is not None) and (Rinv is None) and (Rpinv is None) and (W is None) ), "not enough information to solve in standard form."
+    
+    if (Rinv is None) and (Rpinv is None) and (W is None):
+        # Assume we mean identity regularization, so already in standard form
+        return rlstsq(A, b, **kwargs)
+    elif (Rinv is not None) and (Rpinv is None) and (W is None):
+        # R invertible case
+        return trlstsq_rinv(A, Rinv, b, **kwargs)
+    elif (Rinv is None) and (Rpinv is not None) and (W is None):
+        # R trivial kernel case
+        return trlstsq_rtker(A, Rpinv, b, **kwargs)
+    elif (Rinv is None) and (Rpinv is not None) and (W is not None):
+        # R nontrivial kernel case
+        return trlstsq_rntker(A, Rpinv, W, b, **kwargs)
+    else:
+        raise ValueError("Invalid combination for standard form solver.")
+    
+    
+    
 
 
