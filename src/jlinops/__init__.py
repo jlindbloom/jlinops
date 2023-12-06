@@ -14,6 +14,7 @@ from .base import *
 from .base import _CustomLinearOperator, _AdjointLinearOperator
 from .linalg import *
 from .diagonal import *
+from .stacked import *
 from .blurring import *
 from .local_averaging import *
 from .subsampling import *

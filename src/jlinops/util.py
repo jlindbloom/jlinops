@@ -55,7 +55,31 @@ def get_module(x):
         return np
     else:
         return cp.get_array_module(x)
+    
 
+def device_to_module(device):
+    """Given device, returns reference to module.
+    """
+    if device == "cpu":
+        return np
+    elif device == "gpu":
+        assert CUPY_INSTALLED, "CuPy not installed."
+        return cp      
+    else:
+        raise NotImplementedError
+        
+        
+def split_array(x, lengths):
+    """Given a 1D array x of length n and a set of lengths,
+    returns a list of arrays containing x diced into these lengths.
+    """
+    xp = get_module(x)
+    assert xp.ndim(x) == 1, "input vector must be 1-dimensional."
+    n = len(x)
+    return np.split(x, xp.cumsum(lengths)[:-1])
+    
+    
+    
 
         
 def issparse(x):
