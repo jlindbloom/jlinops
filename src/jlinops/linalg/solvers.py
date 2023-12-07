@@ -45,71 +45,94 @@ def cgls(A, b, x0=None, maxiter=None, return_search_vectors=False,
     if return_iterates:
         iterates = [x]
         
+    # Check if stopping criterion already satisfied?
     stopping_criteria_satisfied = False
-    for j in range(maxiter):
+    if early_stopping:
+        if relative:
+            if (At_residual_norm/bnorm) < tol:
+                stopping_criteria_satisfied = True
+        else:
+            if At_residual_norm < tol:
+                stopping_criteria_satisfied = True
+
+    if stopping_criteria_satisfied:
+        data = {
+            "x": x,
+            "residual_norms": xp.asarray(residual_norms),
+            "x_norms": xp.asarray(x_norms),
+            "n_iters": n_iters,
+            "iterates": None,
+            "search_vectors": None,
+            "converged": stopping_criteria_satisfied,
+            "At_residual_norms": xp.asarray(At_residual_norms),
+        }
+        return data
+    
+    else:
         
-        # Compute iterate
-        A_d = A.matvec(d) # only matvec with A
-        alpha = (xp.linalg.norm(At_r_prev)/xp.linalg.norm(A_d))**2
-        x = x + alpha*d
-        r_curr = r_prev - alpha*A_d
-        At_r_curr = A.rmatvec(r_curr) # only matvec with At
-        beta = (xp.linalg.norm(At_r_curr)/xp.linalg.norm(At_r_prev))**2
-        d = At_r_curr + beta*d
-        
-        # Advance
-        r_prev = r_curr
-        At_r_prev = At_r_curr
-        n_iters += 1
-        
-        # Store search vectors and iterates?
+        # Do iterations
+        for j in range(maxiter):
+
+            # Compute iterate
+            A_d = A.matvec(d) # only matvec with A
+            alpha = (xp.linalg.norm(At_r_prev)/xp.linalg.norm(A_d))**2
+            x = x + alpha*d
+            r_curr = r_prev - alpha*A_d
+            At_r_curr = A.rmatvec(r_curr) # only matvec with At
+            beta = (xp.linalg.norm(At_r_curr)/xp.linalg.norm(At_r_prev))**2
+            d = At_r_curr + beta*d
+
+            # Advance
+            r_prev = r_curr
+            At_r_prev = At_r_curr
+            n_iters += 1
+
+            # Store search vectors and iterates?
+            if return_search_vectors:
+                search_vectors.append(d)
+            if return_iterates:
+                iterates.append(x)
+
+            # Track residual and solution norm
+            residual_norm = xp.linalg.norm(r_prev)
+            At_residual_norm = xp.linalg.norm(At_r_prev) # This is the one that is going to zero
+            residual_norms.append(residual_norm)
+            At_residual_norms.append(At_residual_norm)
+            x_norms.append(xp.linalg.norm(x))
+
+            # Stopping criteria?
+            if early_stopping:
+                if relative:
+                    if (At_residual_norm/bnorm) < tol:
+                        stopping_criteria_satisfied = True
+                        break
+                else:
+                    if At_residual_norm < tol:
+                        stopping_criteria_satisfied = True
+                        break
+
+        data = {
+            "x": x,
+            "residual_norms": xp.asarray(residual_norms),
+            "x_norms": xp.asarray(x_norms),
+            "n_iters": n_iters,
+            "iterates": None,
+            "search_vectors": None,
+            "converged": stopping_criteria_satisfied,
+            "At_residual_norms": xp.asarray(At_residual_norms),
+        }
+
         if return_search_vectors:
-            search_vectors.append(d)
+            data["search_vectors"] = xp.vstack(search_vectors).T
+
         if return_iterates:
-            iterates.append(x)
-        
-        # Track residual and solution norm
-        residual_norm = xp.linalg.norm(r_prev)
-        At_residual_norm = xp.linalg.norm(At_r_prev) # This is the one that is going to zero
-        residual_norms.append(residual_norm)
-        At_residual_norms.append(At_residual_norm)
-        x_norms.append(xp.linalg.norm(x))
-        
-        # Stopping criteria?
-        if early_stopping:
-            if relative:
-                #print(residual_norm/bnorm)
-                if (At_residual_norm/bnorm) < tol:
-                    stopping_criteria_satisfied = True
-                    break
-            else:
-                #print(residual_norm)
-                if At_residual_norm < tol:
-                    stopping_criteria_satisfied = True
-                    break
-        
-    data = {
-        "x": x,
-        "residual_norms": xp.asarray(residual_norms),
-        "x_norms": xp.asarray(x_norms),
-        "n_iters": n_iters,
-        "iterates": None,
-        "search_vectors": None,
-        "converged": stopping_criteria_satisfied,
-        "At_residual_norms": xp.asarray(At_residual_norms),
-    }
-    
-    if return_search_vectors:
-        data["search_vectors"] = xp.vstack(search_vectors).T
-        
-    if return_iterates:
-        data["iterates"] = xp.vstack(iterates).T
-    
-    return data
+            data["iterates"] = xp.vstack(iterates).T
+
+        return data
 
 
 
-def rlstsq(A, b, lam=1.0, shift=None, *args, **kwargs):
+def rlstsq(A, b, lam=1.0, shift=None, initialization=None, *args, **kwargs):
     """Solves the regularized least-squares problem
     min_x || A x - b ||_2^2 + lam*|| x - shift ||_2^2
     using a CGLS method.
@@ -122,12 +145,12 @@ def rlstsq(A, b, lam=1.0, shift=None, *args, **kwargs):
     if shift is None:
         shift = xp.zeros(n)
     rhs = xp.hstack([b, xp.sqrt(lam)*shift])
-    data = cgls(Atilde, rhs, *args, **kwargs)
+    data = cgls(Atilde, rhs, x0=initialization, *args, **kwargs)
     return data
 
 
 
-def trlstsq(A, R, b, lam=1.0, shift=None, *args, **kwargs):
+def trlstsq(A, R, b, lam=1.0, shift=None, initialization=None, *args, **kwargs):
     """Solves the regularized least-squares problem
     min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
     using a CGLS method. It is assumed that
@@ -141,19 +164,20 @@ def trlstsq(A, R, b, lam=1.0, shift=None, *args, **kwargs):
     zeros = xp.zeros(R.shape[0])
     
     if shift is None:
-        shift = xp.zeros(n)
+        shift = xp.zeros(R.shape[0])
     
     # If R is none, assume we mean identity (so really, not transformed at all)
     if R is None:
         R = IdentityOperator((n,n), device=device)
         
     rhs = xp.hstack([b, xp.sqrt(lam)*shift])
-    data = cgls(Atilde, rhs, *args, **kwargs)
+    data = cgls(Atilde, rhs, x0=initialization, *args, **kwargs)
+    
     return data
 
 
 
-def trlstsq_rinv(A, Rinv, b, lam=1.0, shift=None, *args, **kwargs):
+def trlstsq_rinv(A, Rinv, b, lam=1.0, shift=None, initialization=None, R=None, *args, **kwargs):
     """Solves the regularized least-squares problem
     min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
     using a transformation to standard form + a CGLS method. 
@@ -165,12 +189,13 @@ def trlstsq_rinv(A, Rinv, b, lam=1.0, shift=None, *args, **kwargs):
     xp = device_to_module(device)
     n = A.shape[1]
     
-#     # If Rinv is none, assume we mean identity (so really, not transformed at all)
-#     if Rinv is None:
-#         Rinv = IdentityOperator((n,n), device=device)
-    
+    # Build Atilde, handle initialization, and solve
     Atilde = A @ Rinv 
-    data = rlstsq(Atilde, b, shift=shift, lam=lam, *args, **kwargs)
+    if initialization is not None:
+        assert R is not None, "must provide R."
+        initialization = R.matvec(initialization) # transform initialization to z coordinate
+        
+    data = rlstsq(Atilde, b, shift=shift, lam=lam, initialization=initialization, *args, **kwargs)
     
     # Transform solution and overwrite cgls_data
     data["z"] = data["x"].copy() # z is new coordinate
@@ -181,7 +206,7 @@ def trlstsq_rinv(A, Rinv, b, lam=1.0, shift=None, *args, **kwargs):
 
 
 
-def trlstsq_rtker(A, Rpinv, b, lam=1.0, shift=None, chol_fac=False, R=None, *args, **kwargs):
+def trlstsq_rtker(A, Rpinv, b, lam=1.0, shift=None, chol_fac=False, R=None, initialization=None, *args, **kwargs):
     """Solves the regularized least-squares problem
     min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
     using a transformation to standard form + a CGLS method. 
@@ -204,6 +229,13 @@ def trlstsq_rtker(A, Rpinv, b, lam=1.0, shift=None, chol_fac=False, R=None, *arg
             shift = R @ (Rpinv @ shift)
         else:
             shift = Rpinv.rmatvec(R.rmatvec(shift))
+            
+    if initialization is not None:
+        assert R is not None, "must provide R."
+        if not chol_fac:
+            initialization = R.matvec(initialization) # transform initialization to z coordinate
+        else:
+            initialization = Linv.rmatvec(R.rmatvec(R.matvec(initialization)))
         
     data = rlstsq(Atilde, b, lam=lam, shift=shift, *args, **kwargs)
     
@@ -216,7 +248,7 @@ def trlstsq_rtker(A, Rpinv, b, lam=1.0, shift=None, chol_fac=False, R=None, *arg
 
 
 
-def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, shift=None, R=None, *args, **kwargs):
+def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, shift=None, R=None, initialization=None, *args, **kwargs):
     """Solves the regularized least-squares problem
     min_x || A x - b ||_2^2 + lam*|| R x - shift ||_2^2
     using a transformation to standard form + a CGLS method. 
@@ -243,8 +275,16 @@ def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, shift=None, R=None, *ar
     if shift is not None:
         assert R is not None, "R must be provided."
         shift = R @ (Rpinv @ shift)
-
-    data = rlstsq(Atilde, b, lam=lam, shift=shift, *args, **kwargs)
+        
+    if initialization is not None:
+        assert R is not None, "R must be provided."
+        #initialization = oblique_pinv.matvec(R.matvec(initialization))
+        Wpinv = QRPinvOperator( W.A )
+        initialization = initialization - (W @ ( Wpinv @ initialization))
+        initialization = R.matvec(initialization)
+    
+    data = rlstsq(Atilde, b, lam=lam, shift=shift, initialization=initialization, *args, **kwargs)
+    
     
     # Transform solution and overwrite cgls_data
     data["z"] = data["x"].copy() # z is transformed coordinate
