@@ -4,3 +4,4 @@ from .eigen import *
 from .svd import *
 from .solvers import *
 from .bidiag import *
+from .gsvd import *
