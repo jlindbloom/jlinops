@@ -5,7 +5,9 @@ from scipy.linalg import solve_triangular as scipy_solve_triangular
 from scipy.linalg import qr as sp_qr
 from scipy.linalg import solve_triangular as sp_solve_triangular
 from scipy.sparse.linalg import SuperLU as sp_SuperLU
+from scipy.sparse.linalg import cg as sp_cg
 import scipy.sparse as sps
+
 
 
 from .base import MatrixLinearOperator, _CustomLinearOperator 
@@ -14,7 +16,7 @@ from .diagonal import DiagonalOperator
 from .derivatives import Neumann2D
 from .linalg import dct_sqrt_pinv, dct_pinv
 from .linear_solvers import cg
-from .util import issparse, tosparse
+from .util import issparse, tosparse, get_device
 
 
 from . import CUPY_INSTALLED

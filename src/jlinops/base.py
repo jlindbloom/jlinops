@@ -442,7 +442,7 @@ class LinearOperator:
                 else:
                     x = cp.asarray(x)
 
-            if x.ndim == 1 or x.ndim == 2 and x.shape[1] == 1:
+            if x.ndim == 1 or (x.ndim == 2 and x.shape[1] == 1):
                 return self.matvec(x)
             elif x.ndim == 2:
                 return self.matmat(x)

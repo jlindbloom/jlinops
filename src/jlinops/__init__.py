@@ -21,6 +21,7 @@ from .subsampling import *
 from .local_averaging import *
 from .derivatives import *
 from .linalg import *
+from .interpolation import *
 from .linear_solvers import *
 from .inv import *
 from .cholesky import *

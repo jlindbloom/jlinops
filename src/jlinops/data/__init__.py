@@ -3,7 +3,7 @@
 import sys
 from cycler import cycler
 
-from ._dim1 import sin_trapezoid, piecewise_constant_1d_test_problem
+from ._dim1 import sin_trapezoid, piecewise_constant_1d_test_problem, mixed_test_problem, comp_emp_bayes_t1d_test_problem
 from ._dim2 import read_image, ge, cameraman, grandcanyon, shepplogan, seaice, fingerprint
 from ._dim2 import cortex, satellite, mri, graecolatinsquare, sar1, sar2, meme
 
@@ -25,6 +25,8 @@ __all__ = [
     "sar2",
     "piecewise_constant_1d_test_problem",
     "meme",
+    "mixed_test_problem",
+    "comp_emp_bayes_t1d_test_problem",
 ]
 
 

@@ -37,6 +37,71 @@ def first_order_derivative_1d(N, boundary="none"):
 
 
 
+def second_order_derivative_1d(N, boundary="none"):
+    """Constructs a SciPy sparse matrix that extracts the (1D) discrete gradient of an input signal.
+    Boundary parameter specifies how to handle the boundary conditions.
+    """
+    
+    assert boundary in ["none"], "Invalid boundary parameter."
+    
+    d_mat = -sps.eye(N)
+    d_mat.setdiag(2,k=1)
+    d_mat.setdiag(-1,k=2)
+    d_mat = d_mat.tolil()
+    
+    if boundary == "periodic":
+        d_mat[-2,0] = -1
+        d_mat[-1,0] = 2
+        d_mat[-1,1] = -1
+        raise NotImplementedError
+    elif boundary == "zero":
+        raise NotImplementedError
+    elif boundary == "none":
+        d_mat = d_mat[:-2, :]
+        w1 = np.ones(N)/np.linalg.norm(np.ones(N))
+        w2 = np.arange(N)/np.linalg.norm(np.arange(N))
+        W = np.vstack([w1, w2]).T
+    else:
+        pass
+    
+    return d_mat, W
+
+
+
+def third_order_derivative_1d(N, boundary="none"):
+    """Constructs a SciPy sparse matrix that extracts the (1D) discrete gradient of an input signal.
+    Boundary parameter specifies how to handle the boundary conditions.
+    """
+    
+    assert boundary in ["none"], "Invalid boundary parameter."
+    
+    d_mat = -sps.eye(N)
+    d_mat.setdiag(3,k=1)
+    d_mat.setdiag(-3,k=2)
+    d_mat.setdiag(1,k=3)
+    d_mat = d_mat.tolil()
+    
+    if boundary == "periodic":
+        raise NotImplementedError
+    elif boundary == "zero":
+        raise NotImplementedError
+    elif boundary == "none":
+        d_mat = d_mat[:-3, :]
+        w1 = np.ones(N)/np.linalg.norm(np.ones(N))
+        w2 = np.arange(N)/np.linalg.norm(np.arange(N))
+        w3 = np.cumsum(w2)/np.linalg.norm(np.cumsum(w2))
+        W = np.vstack([w1, w2, w3]).T
+    else:
+        pass
+    
+    return d_mat, W
+
+
+
+
+
+
+
 def first_order_derivative_2d_split(grid_shape, boundary="periodic"):
     """Constructs a SciPy sparse matrix that extracts the discrete gradient of an two-dimensional array.
 

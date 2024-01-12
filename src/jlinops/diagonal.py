@@ -27,7 +27,7 @@ class DiagonalOperator(_CustomLinearOperator):
         def _rmatvec(x):
             return self.diagonal.conj()*x
         
-        super().__init__((n,n), _matvec, _rmatvec, device=device, dtype=self.diagonal.dtype)
+        super().__init__( (n,n), _matvec, _rmatvec, device=device, dtype=self.diagonal.dtype)
 
     def to_gpu(self):
 

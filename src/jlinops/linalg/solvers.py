@@ -6,8 +6,9 @@ from ..base import IdentityOperator
 from ..pseudoinverse import QRPinvOperator
 
 
+
 def cgls(A, b, x0=None, maxiter=None, return_search_vectors=False, 
-         return_iterates=False, tol=1e-3, relative=True, early_stopping=True):
+         return_iterates=False, tol=1e-3, relative=True, early_stopping=True, **kwargs):
     """CGLS method applied to solution of
     min_x || A x - b ||_2.
     """
