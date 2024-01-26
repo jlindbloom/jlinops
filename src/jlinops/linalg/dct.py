@@ -105,11 +105,11 @@ def dct_pinv(A, grid_shape, eps=1e-14):
 
     # Take reciprocals of nonzero eigenvalues
     if device == "cpu":
-        recip_eigvals = np.where( np.abs(eigvals) < 1e-14, eigvals, 1.0 / np.clip(eigvals, a_min=eps, a_max=None) )
-        recip_eigvals = np.where( np.abs(eigvals) < 1e-14, np.zeros_like(eigvals), recip_eigvals )
+        recip_eigvals = np.where( np.abs(eigvals) < eps, eigvals, 1.0 / np.clip(eigvals, a_min=eps, a_max=None) )
+        recip_eigvals = np.where( np.abs(eigvals) < eps, np.zeros_like(eigvals), recip_eigvals )
     else:
-        recip_eigvals = cp.where( cp.abs(eigvals) < 1e-14, eigvals, 1.0 / cp.clip(eigvals, a_min=eps, a_max=None) )
-        recip_eigvals = cp.where( cp.abs(eigvals) < 1e-14, cp.zeros_like(eigvals), recip_eigvals )
+        recip_eigvals = cp.where( cp.abs(eigvals) < eps, eigvals, 1.0 / cp.clip(eigvals, a_min=eps, a_max=None) )
+        recip_eigvals = cp.where( cp.abs(eigvals) < eps, cp.zeros_like(eigvals), recip_eigvals )
     
     # DCT op
     P = DCT2D(grid_shape, device=device)

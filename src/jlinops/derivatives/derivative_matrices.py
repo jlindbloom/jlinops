@@ -159,6 +159,25 @@ def first_order_derivative_2d(grid_shape, boundary="periodic"):
 
 
 
+def build_neumann2d_sparse_matrix(grid_shape):
+     """Makes a sparse matrix corresponding to the matrix-free Neumann2D operator.
+     """
+
+     m, n = grid_shape
+
+     Rv, _ = first_order_derivative_1d(m, boundary="reflexive")
+     Rv *= -1.0
+
+     Rh, _ = first_order_derivative_1d(n, boundary="reflexive")
+     Rh *= -1.0
+
+     return sps.vstack([sps.kron(Rv, sps.eye(n)), sps.kron(sps.eye(m), Rh) ])
+
+
+
+
+
+
 
 
 
