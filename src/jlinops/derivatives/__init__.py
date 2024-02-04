@@ -1,5 +1,5 @@
 #from .derivative_matrices import *
-from .implicit import Neumann2D
+from .implicit import *
 from .derivative_matrices import *
 
 

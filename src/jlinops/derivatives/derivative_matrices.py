@@ -11,7 +11,7 @@ def first_order_derivative_1d(N, boundary="none"):
     whose column span the nullspace of the operator (if trivial, W = None).
     """
     
-    assert boundary in ["none", "periodic", "zero", "reflexive"], "Invalid boundary parameter."
+    assert boundary in ["none", "periodic", "zero", "reflexive", "zero_sym"], "Invalid boundary parameter."
     
     d_mat = sps.eye(N)
     d_mat.setdiag(-1,k=1)
@@ -30,6 +30,12 @@ def first_order_derivative_1d(N, boundary="none"):
     elif boundary == "reflexive":
         d_mat[-1,-1] = 0
         W = np.atleast_2d(np.ones(N)).T
+    elif boundary == "zero_sym":
+        d_mat = sps.csc_matrix(d_mat)
+        new_row = sps.csc_matrix(np.zeros(d_mat.shape[1]))
+        d_mat = sps.vstack([new_row, d_mat])
+        d_mat[0,0] = -1
+        W = None
     else:
         pass
     
@@ -159,6 +165,9 @@ def first_order_derivative_2d(grid_shape, boundary="periodic"):
 
 
 
+
+
+
 def build_neumann2d_sparse_matrix(grid_shape):
      """Makes a sparse matrix corresponding to the matrix-free Neumann2D operator.
      """
@@ -172,6 +181,34 @@ def build_neumann2d_sparse_matrix(grid_shape):
      Rh *= -1.0
 
      return sps.vstack([sps.kron(Rv, sps.eye(n)), sps.kron(sps.eye(m), Rh) ])
+
+
+
+def build_dirichlet2d_sparse_matrix(grid_shape):
+    """Makes a sparse matrix corresponding to the matrix-free Dirichlet2D operator.
+    """
+
+    Q, _ = first_order_derivative_2d(grid_shape, boundary="zero")
+
+    return Q
+
+
+
+
+def build_dirichlet2dsym_sparse_matrix(grid_shape):
+     """Makes a sparse matrix corresponding to the matrix-free Dirichlet2DSym operator.
+     """
+
+     m, n = grid_shape
+
+     Rv, _ = first_order_derivative_1d(m, boundary="zero_sym")
+     Rv *= -1.0
+
+     Rh, _ = first_order_derivative_1d(n, boundary="zero_sym")
+     Rh *= -1.0
+
+     return sps.vstack([sps.kron(Rv, sps.eye(n)), sps.kron(sps.eye(m), Rh) ])
+
 
 
 

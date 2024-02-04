@@ -62,14 +62,16 @@ def dct_get_eigvals(A, grid_shape):
     
     device = A.device
     if device == "cpu":
-        v = np.random.normal(size=(M,N)) + 10.0
+        v = np.random.normal(size=(M,N)) + 100000.0
+        #v = np.ones((M,N))
         tmp = A @ ( sp_idctn( v, norm="ortho" ).flatten()  )
         tmp = tmp.reshape((M,N))
         tmp = sp_dctn( tmp, norm="ortho" ).flatten()
         res = tmp/v.flatten()
         return res
     else:
-        v = cp.random.normal(size=(M,N)) + 10.0
+        v = cp.random.normal(size=(M,N)) + 100000.0
+        #v = cp.ones((M,N))
         tmp = A @ ( cp_idctn( v, norm="ortho" ).flatten()  )
         tmp = tmp.reshape((M,N))
         tmp = cp_dctn( tmp, norm="ortho" ).flatten()

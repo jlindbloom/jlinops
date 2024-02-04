@@ -15,6 +15,7 @@ from scipy.sparse import csc_matrix
 from fastprogress import progress_bar
 
 
+
 from . import CUPY_INSTALLED
 if CUPY_INSTALLED:
     import cupy as cp
@@ -51,6 +52,7 @@ def get_device(x):
 def get_module(x):
     """Returns a reference to NumPy if x is on cpu, to CuPy if x on GPU.
     """
+ 
     if not CUPY_INSTALLED:
         return np
     else:

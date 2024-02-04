@@ -234,7 +234,10 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
                 def _rmatvec(x):
                     
                     # Project x onto range(A^T A) = range(A^T).
-                    z = x - (self.W @ (self.Wpinv @ x))
+                    if (self.W is not None) and (self.Wpinv is not None):
+                        z = x - (self.W @ (self.Wpinv @ x))
+                    else:
+                        z = x 
                     
                     sol, converged = sp_cg(self.C, z, x0=self.prev_eval_t, M=self.Mpinv, *args, **kwargs) 
                     if self.check:
@@ -263,9 +266,12 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
                     return sol
                 
                 def _rmatvec(x):
-                    
+
                     # Project x onto range(A^T A) = range(A^T).
-                    z = x - (self.W @ (self.Wpinv @ x))
+                    if (self.W is not None) and (self.Wpinv is not None):
+                        z = x - (self.W @ (self.Wpinv @ x))
+                    else:
+                        z = x
                     
                     sol, converged = cupy_cg(self.C, z, x0=self.prev_eval_t, M=self.Mpinv, *args, **kwargs) 
                     if self.check:
