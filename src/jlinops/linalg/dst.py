@@ -12,8 +12,8 @@ from ..util import get_device
 from .. import CUPY_INSTALLED
 if CUPY_INSTALLED:
     import cupy as cp
-    from cupyx.scipy.fft import dctn as cp_dctn
-    from cupyx.scipy.fft import idctn as cp_idctn
+    from cupyx.scipy.fft import dctn as cp_dstn
+    from cupyx.scipy.fft import idctn as cp_idstn
 
     
 
@@ -40,19 +40,19 @@ class DST2D(_CustomLinearOperator):
         else:
             
             def _matvec(x):
-                return cp_dctn( x.reshape(self.grid_shape), norm="ortho", ).flatten()
+                return cp_dstn( x.reshape(self.grid_shape), norm="ortho", ).flatten()
             
             def _rmatvec(x):
-                return cp_idctn( x.reshape(self.grid_shape), norm="ortho" ).flatten()
+                return cp_idstn( x.reshape(self.grid_shape), norm="ortho" ).flatten()
               
         super().__init__(shape, _matvec, _rmatvec, device=device)
         
     
     def to_gpu(self):
-        return DST2D(self.grid_shape, device="gpu")
+        return DST2D(self.grid_shape, device="gpu", type=self.type)
     
     def to_cpu(self):
-        return DST2D(self.grid_shape, device="cpu")
+        return DST2D(self.grid_shape, device="cpu", type=self.type)
     
     
     
@@ -75,10 +75,9 @@ def dst_get_eigvals(A, grid_shape, make_pos=False, type=1):
         return res
     else:
         v = cp.random.normal(size=(M,N)) + 10.0
-        #v = cp.ones((M,N))
-        tmp = A @ ( cp_idctn( v, norm="ortho", type=type ).flatten()  )
+        tmp = A @ ( cp_idstn( v, norm="ortho", type=type ).flatten()  )
         tmp = tmp.reshape((M,N))
-        tmp = cp_dctn( tmp, norm="ortho", type=type ).flatten()
+        tmp = cp_dstn( tmp, norm="ortho", type=type ).flatten()
         res = tmp/v.flatten()
         if make_pos:
             res = cp.abs(res)
@@ -152,8 +151,6 @@ def dst_sqrt_pinv(A, grid_shape, eps=1e-14, type=1):
     Lpinv = DiagonalOperator(recip_eigvals**0.5) @ P
 
     return Lpinv
-
-
 
 
 
