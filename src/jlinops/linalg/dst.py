@@ -1,7 +1,7 @@
 import numpy as np
 import math
-from scipy.fft import dctn as sp_dctn
-from scipy.fft import idctn as sp_idctn
+from scipy.fft import dctn as sp_dstn
+from scipy.fft import idctn as sp_idstn
 from scipy.sparse.linalg import LinearOperator
 # from scipy.sparse.linalg._interface import _CustomLinearOperator
 
@@ -16,29 +16,31 @@ if CUPY_INSTALLED:
     from cupyx.scipy.fft import idctn as cp_idctn
 
     
-    
-class DCT2D(_CustomLinearOperator):
-    """Represents a 2-dimensional DCT transform.
+
+
+class DST2D(_CustomLinearOperator):
+    """Represents a 2-dimensional DST transform.
     """
-    def __init__(self, grid_shape, device="cpu"):
+    def __init__(self, grid_shape, device="cpu", type=1):
         
         # Handle shape
         self.grid_shape = grid_shape
         n = math.prod(self.grid_shape)
+        self.type = type
         shape = (n,n)
         
         if device == "cpu":
             
             def _matvec(x):
-                return sp_dctn( x.reshape(self.grid_shape), norm="ortho" ).flatten()
+                return sp_dstn( x.reshape(self.grid_shape), norm="ortho", type=self.type ).flatten()
             
             def _rmatvec(x):
-                return sp_idctn( x.reshape(self.grid_shape), norm="ortho" ).flatten()
+                return sp_idstn( x.reshape(self.grid_shape), norm="ortho", type=self.type ).flatten()
             
         else:
             
             def _matvec(x):
-                return cp_dctn( x.reshape(self.grid_shape), norm="ortho" ).flatten()
+                return cp_dctn( x.reshape(self.grid_shape), norm="ortho", ).flatten()
             
             def _rmatvec(x):
                 return cp_idctn( x.reshape(self.grid_shape), norm="ortho" ).flatten()
@@ -47,15 +49,15 @@ class DCT2D(_CustomLinearOperator):
         
     
     def to_gpu(self):
-        return DCT2D(self.grid_shape, device="gpu")
+        return DST2D(self.grid_shape, device="gpu")
     
     def to_cpu(self):
-        return DCT2D(self.grid_shape, device="cpu")
-
+        return DST2D(self.grid_shape, device="cpu")
     
     
-def dct_get_eigvals(A, grid_shape, make_pos=False):
-    """Given an SSPD LinearOperator A that is diagonalized by the 2-dimensional DCT, computes its eigenvalues.
+    
+def dst_get_eigvals(A, grid_shape, make_pos=False, type=1):
+    """Given an SSPD LinearOperator A that is diagonalized by the 2-dimensional DST, computes its eigenvalues.
     """
     # Shape of dct
     M, N = grid_shape
@@ -63,38 +65,38 @@ def dct_get_eigvals(A, grid_shape, make_pos=False):
     device = A.device
     if device == "cpu":
         v = np.random.normal(size=(M,N)) + 10.0
-        v = np.ones((M,N))
-        tmp = A @ ( sp_idctn( v, norm="ortho" ).flatten()  )
+        #v = np.ones((M,N))
+        tmp = A @ ( sp_idstn( v, norm="ortho", type=type ).flatten()  )
         tmp = tmp.reshape((M,N))
-        tmp = sp_dctn( tmp, norm="ortho" ).flatten()
+        tmp = sp_dstn( tmp, norm="ortho", type=type ).flatten()
         res = tmp/v.flatten()
         if make_pos:
             res = np.abs(res)
         return res
     else:
         v = cp.random.normal(size=(M,N)) + 10.0
-        v = cp.ones((M,N))
-        tmp = A @ ( cp_idctn( v, norm="ortho" ).flatten()  )
+        #v = cp.ones((M,N))
+        tmp = A @ ( cp_idctn( v, norm="ortho", type=type ).flatten()  )
         tmp = tmp.reshape((M,N))
-        tmp = cp_dctn( tmp, norm="ortho" ).flatten()
+        tmp = cp_dctn( tmp, norm="ortho", type=type ).flatten()
         res = tmp/v.flatten()
         if make_pos:
             res = cp.abs(res)
         return res
 
+    
 
-
-def dct_sqrt(A, grid_shape):
-    """Given a LinearOperator A that is diagonalized by the 2-dimensional DCT, performs the diagonalization (computes 
+def dst_sqrt(A, grid_shape, type=1):
+    """Given a LinearOperator A that is diagonalized by the 2-dimensional DST, performs the diagonalization (computes 
     eigenvalues), computes the square root L in A = L L^T, and returns a LinearOperator representing L.
     """
     
     # Get eigenvalues
-    eigvals = dct_get_eigvals(A, grid_shape, make_pos=True)
+    eigvals = dst_get_eigvals(A, grid_shape, make_pos=True, type=type)
     
     # Setup 
     device = get_device(eigvals)
-    P = DCT2D(grid_shape, device=device)
+    P = DST2D(grid_shape, device=device, type=type)
     sqrt_lam = DiagonalOperator( eigvals**0.5 )
     sqrt_op = P.T @ sqrt_lam
     
@@ -102,11 +104,11 @@ def dct_sqrt(A, grid_shape):
 
 
 
-def dct_pinv(A, grid_shape, eps=1e-14):
-    """Given a LinearOperator A that is diagonalized by the DCT, performs the diagonalization (computes eigenvalues), returns a LinearOperator representing A^\dagger (pseudoinverse).
+def dst_pinv(A, grid_shape, eps=1e-14, type=1):
+    """Given a LinearOperator A that is diagonalized by the DST, performs the diagonalization (computes eigenvalues), returns a LinearOperator representing A^\dagger (pseudoinverse).
     """
     # Get eigenvalues
-    eigvals = dct_get_eigvals(A, grid_shape)
+    eigvals = dst_get_eigvals(A, grid_shape, type=type)
     device = get_device(eigvals)
 
     # Take reciprocals of nonzero eigenvalues
@@ -118,7 +120,7 @@ def dct_pinv(A, grid_shape, eps=1e-14):
         recip_eigvals = cp.where( cp.abs(eigvals) < eps, cp.zeros_like(eigvals), recip_eigvals )
     
     # DCT op
-    P = DCT2D(grid_shape, device=device)
+    P = DST2D(grid_shape, device=device, type=type)
     
     # Apinv op
     Apinv = P.T @ ( DiagonalOperator(recip_eigvals) @ P)
@@ -127,12 +129,12 @@ def dct_pinv(A, grid_shape, eps=1e-14):
 
 
 
-def dct_sqrt_pinv(A, grid_shape, eps=1e-14):
-    """Given an SSPD LinearOperator A that is diagonalized by the DCT, performs the diagonalization (computes eigenvalues),
+def dst_sqrt_pinv(A, grid_shape, eps=1e-14, type=1):
+    """Given an SSPD LinearOperator A that is diagonalized by the DST, performs the diagonalization (computes eigenvalues),
     computes the square root L in A = L L^T, and returns a LinearOperator representing L^\dagger (pseudoinverse).
     """
     # Get eigenvalues
-    eigvals = dct_get_eigvals(A, grid_shape, make_pos=True)
+    eigvals = dst_get_eigvals(A, grid_shape, make_pos=True, type=type)
     device = get_device(eigvals)
 
     # Take reciprocals of nonzero eigenvalues
@@ -144,9 +146,14 @@ def dct_sqrt_pinv(A, grid_shape, eps=1e-14):
         recip_eigvals = cp.where( cp.abs(eigvals) < 1e-14, cp.zeros_like(eigvals), recip_eigvals )
     
     # DCT op
-    P = DCT2D(grid_shape, device=device)
+    P = DST2D(grid_shape, device=device, type=type)
     
     # Lpinv op
     Lpinv = DiagonalOperator(recip_eigvals**0.5) @ P
 
     return Lpinv
+
+
+
+
+

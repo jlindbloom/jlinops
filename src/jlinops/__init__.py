@@ -22,7 +22,6 @@ from .local_averaging import *
 from .derivatives import *
 from .wavelets import *
 from .structured import *
-from .linalg import *
 from .interpolation import *
 from .linear_solvers import *
 from .inv import *
@@ -32,6 +31,8 @@ from .pseudoinverse import *
 from .oblique import *
 from .data import *
 from .proximal import *
+
+from .linalg import *
 
 
 

@@ -442,9 +442,11 @@ class LinearOperator:
                 else:
                     x = cp.asarray(x)
 
-            if x.ndim == 1 or (x.ndim == 2 and x.shape[1] == 1):
+            if x.ndim == 1:
                 return self.matvec(x)
-            elif x.ndim == 2:
+            elif (x.ndim == 2) and (x.shape[1] == 1):
+                return np.atleast_2d(self.matvec(x[:,0])).T
+            elif (x.ndim == 2) and (x.shape[1] != 1):
                 return self.matmat(x)
             else:
                 raise ValueError('expected 1-d or 2-d array or matrix, got %r'

@@ -10,13 +10,16 @@ import scipy.sparse as sps
 
 
 
-from .base import MatrixLinearOperator, _CustomLinearOperator 
-from .linalg import banded_cholesky
+from .base import MatrixLinearOperator, _CustomLinearOperator, IdentityOperator
+from .linalg.factorizations import banded_cholesky
 from .diagonal import DiagonalOperator
-from .derivatives import Neumann2D
-from .linalg import dct_sqrt_pinv, dct_pinv
+from .derivatives import Neumann2D, Dirichlet2DSym
+# from .cginv import CGDirichlet2DSymLapInvOperator, CGWeightedDirichlet2DSymLapInvOperator
+from .linalg.dct import dct_sqrt_pinv, dct_pinv
+from .linalg.dst import dst_sqrt_pinv, dst_pinv
 from .linear_solvers import cg
 from .util import issparse, tosparse, get_device
+from .linalg import dct_sqrt, dct_sqrt_pinv
 
 
 from . import CUPY_INSTALLED
@@ -25,6 +28,7 @@ if CUPY_INSTALLED:
     from cupyx.scipy.linalg import solve_triangular as cp_solve_triangular
     from cupy.linalg import qr as cp_qr
     from cupyx.scipy.sparse.linalg import SuperLU as cp_SuperLU
+
 
 
 
@@ -298,6 +302,7 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
     
     
 
+
 class CGWeightedNeumann2DPinvOperator(_CustomLinearOperator):
     """Represents the pseudoinverse (R_w)^\dagger of a linear operator R_w = D_w R, where
     D_w is a diagonal matrix of weights and R is a Neumann2D operator.
@@ -355,6 +360,273 @@ class CGWeightedNeumann2DPinvOperator(_CustomLinearOperator):
     def to_cpu(self):
         return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.numpy(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
     
+
+
+
+
+
+class CGWeightedDirichlet2DSymPinvOperator(_CustomLinearOperator):
+    """Represents the pseudoinverse (R_w)^\dagger of a linear operator R_w = D_w R, where
+    D_w is a diagonal matrix of weights and R is a Dirichlet2DSym operator.
+    Here matvecs/rmatvecs are applied approximately using a preconditioned conjugate
+    gradient method, where the preconditioner is based on the operator with identity weights. 
+    """
+
+    def __init__(self, grid_shape, weights, warmstart_prev=False, check=False, which="scipy", dct_eps=1e-14, *args, **kwargs):
+
+        device = get_device(weights)
+        self.R = Dirichlet2DSym(grid_shape, device=device)
+        assert self.R.shape[0] == len(weights), "Weights incompatible!"
+        self.weights = weights
+        self.grid_shape = grid_shape
+        self.warmstart_prev = warmstart_prev
+        self.check = check
+        self.which = which
+        self.args = args
+        self.kwargs = kwargs
+        
+       
+        # Build RtR and Rw
+        self.RtR = self.R.T @ self.R
+        self.Dw = DiagonalOperator(weights)
+        self.Rw = self.Dw @ self.R
+
+        # Get Rpinv (with identity weights)
+        self.RtRpinv = dst_pinv( self.RtR, grid_shape, eps=dct_eps )
+
+        # Take care of W (columns span the kernel of R)
+        if device == "cpu":
+            W = np.ones((self.R.shape[1],1))
+        else:
+            W = cp.ones((self.R.shape[1],1))
+            
+        self.W = MatrixLinearOperator(W)
+        self.Wpinv = QRPinvOperator(self.W)
+
+        # Make Rwpinv
+        self.Rwpinv = CGPreconditionedPinvModOperator(self.Rw, self.W, self.Wpinv, self.RtRpinv, warmstart_prev=warmstart_prev, check=check, which=which, *args, **kwargs)
+
+        def _matvec(x):
+            return self.Rwpinv.matvec(x)
+
+        def _rmatvec(x):
+            return self.Rwpinv.rmatvec(x)
+
+        super().__init__( self.Rwpinv.shape, _matvec, _rmatvec, dtype=np.float64, device=device)
+        
+
+    def to_gpu(self):
+        return CGWeightedDirichlet2DSymPinvOperator(self.grid_shape, cp.asarray(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
+    
+    def to_cpu(self):
+        return CGWeightedDirichlet2DSymPinvOperator(self.grid_shape, cp.numpy(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
+    
+
+
+
+
+
+
+
+
+
+
+
+###################################################################################################################
+### These methods use the singular preconditioner based on the Neumann problem to solve the Dirichlet problem. ####
+###################################################################################################################
+    
+
+
+class CGDirichlet2DSymSconLapInvOperator(_CustomLinearOperator):
+    """Represents the inverse of the Laplacian operator R^T R
+    equipped with Dirichlet boundary conditions.
+    """
+
+    def __init__(self, grid_shape, check=True, *args, **kwargs):
+
+        # Make both operators
+        self.grid_shape = grid_shape
+        self.n = math.prod(grid_shape)
+        self.Rd = Dirichlet2DSym(grid_shape)
+        self.Rn = Neumann2D(grid_shape) 
+
+        # Misc
+        self.check = check
+
+        # Build Dirichlet Laplacian
+        self.A = self.Rd.T @ self.Rd
+        self.M = self.Rn.T @ self.Rn
+
+        # Matrix spanning the kernel of the Neumann operator
+        self.Wmat = np.ones((self.n,1))
+        self.W = MatrixLinearOperator(self.Wmat)
+
+        # Operator for getting the part of solution in the kernel
+        #self.sol_ker_op = self.Wmat @ np.linalg.inv( self.Wmat.T @ ( self.A @ self.Wmat )  ) @ self.Wmat.T
+        self.sol_ker_op = self.W @ ( MatrixLinearOperator( np.linalg.inv( self.Wmat.T @ (self.A @ self.Wmat)  ) ) @ self.W.T )
+
+        # Get L, Lpseudo, and Loblique
+        self.L = dct_sqrt(self.M, self.grid_shape).T
+        self.Lpinv = dct_sqrt_pinv(self.M, self.grid_shape).T
+        self.RdWpinv = QRPinvOperator(self.Rd @ self.Wmat)
+        self.Loblique = ( IdentityOperator( (self.n,self.n) ) - (self.W @ self.RdWpinv @ self.Rd) ) @ self.Lpinv
+ 
+        # Set of coefficient matrix
+        self.C = self.Loblique.T @ self.A @ self.Loblique
+
+
+        def _matvec(x):
+
+            sol, converged = sp_cg( self.C, self.Loblique.T @ x, x0=None, M=None, *args, **kwargs) 
+            if self.check:
+                assert converged == 0, "CG algorithm did not converge!"
+            
+            # Project onto range of L
+            sol = self.L @ self.Lpinv @ sol
+            
+            part_one = self.Loblique @ sol
+            part_two = self.sol_ker_op @ x
+
+            result = part_one + part_two
+
+            return result
+
+        super().__init__( (self.n, self.n), _matvec, _matvec, dtype=np.float64, device="cpu")
+
+
+
+
+class CGWeightedDirichlet2DSymSconLapInvOperator(_CustomLinearOperator):
+    """Represents the inverse of the weighted Laplacian operator R^T D_w R
+    equipped with Dirichlet boundary conditions.
+    """
+
+    def __init__(self, grid_shape, weights, check=True, *args, **kwargs):
+
+        # Make both operators
+        self.grid_shape = grid_shape
+        self.Rn = Neumann2D(grid_shape)
+        self.n = self.Rn.shape[1] 
+        self.Rd = DiagonalOperator(np.sqrt(weights)) @ Dirichlet2DSym(grid_shape)
+        self.weights = weights
+
+        # Misc
+        self.check = check
+
+        # Build Dirichlet Laplacian
+        self.A = self.Rd.T @ self.Rd
+        self.M = self.Rn.T @ self.Rn
+
+        # Matrix spanning the kernel of the Neumann operator
+        self.Wmat = np.ones((self.n, 1))
+        self.W = MatrixLinearOperator(self.Wmat)
+
+        # Operator for getting the part of solution in the kernel
+        #self.sol_ker_op = self.Wmat @ np.linalg.inv( self.Wmat.T @ ( self.A @ self.Wmat )  ) @ self.Wmat.T
+        self.sol_ker_op = self.W @ ( MatrixLinearOperator( np.linalg.inv( self.Wmat.T @ (self.A @ self.Wmat)  ) ) @ self.W.T )
+
+        # Get L, Lpseudo, and Loblique
+        self.L = dct_sqrt(self.M, self.grid_shape).T
+        self.Lpinv = dct_sqrt_pinv(self.M, self.grid_shape).T
+        self.RdWpinv = QRPinvOperator(self.Rd @ self.Wmat)
+        self.Loblique = ( IdentityOperator( (self.n,self.n) ) - (self.W @ self.RdWpinv @ self.Rd) ) @ self.Lpinv
+ 
+        # Set of coefficient matrix
+        self.C = self.Loblique.T @ self.A @ self.Loblique
+
+
+        def _matvec(x):
+
+            sol, converged = sp_cg( self.C, self.Loblique.T @ x, x0=None, M=None, *args, **kwargs) 
+            if self.check:
+                assert converged == 0, "CG algorithm did not converge!"
+            
+            # Project onto range of L
+            sol = self.L @ self.Lpinv @ sol
+            
+            part_one = self.Loblique @ sol
+            part_two = self.sol_ker_op @ x
+
+            result = part_one + part_two
+
+            return result
+
+
+        super().__init__( (self.n, self.n), _matvec, _matvec, dtype=np.float64, device="cpu")
+
+
+
+
+
+
+###############################
+### For Dirichlet gradients ###
+###############################
+
+class CGDirichlet2DSymSconPinvOperator(_CustomLinearOperator):
+
+    def __init__(self, grid_shape, check=True, *args, **kwargs):
+
+        # Make operator
+        self.R = Dirichlet2DSym(grid_shape)
+        m, n = self.R.shape
+
+        # Make Laplacian solver
+        self.inv_lap = CGDirichlet2DSymSconLapInvOperator(grid_shape=grid_shape, check=check, *args, **kwargs)
+
+        def _matvec(x):
+
+            tmp = self.R.rmatvec(x)
+            result = self.inv_lap.matvec(tmp)
+
+            return result
+        
+
+        def _rmatvec(x):
+
+            tmp = self.inv_lap.matvec(x)
+            result = self.R.matvec(tmp)
+
+            return result
+        
+
+        super().__init__( (n, m), _matvec, _rmatvec, dtype=np.float64, device="cpu")
+
+
+
+
+class CGWeightedDirichlet2DSymSconPinvOperator(_CustomLinearOperator):
+
+    def __init__(self, grid_shape, weights, check=True, *args, **kwargs):
+
+        # Make operator
+        self.R = DiagonalOperator(np.sqrt(weights)) @ Dirichlet2DSym(grid_shape)
+        self.weights = weights
+        m, n = self.R.shape
+
+        # Make Laplacian solver
+        self.inv_lap = CGWeightedDirichlet2DSymSconLapInvOperator(grid_shape=grid_shape, weights=weights, check=check, *args, **kwargs)
+
+        def _matvec(x):
+
+            tmp = self.R.rmatvec(x)
+            result = self.inv_lap.matvec(tmp)
+
+            return result
+        
+
+        def _rmatvec(x):
+
+            tmp = self.inv_lap.matvec(x)
+            result = self.R.matvec(tmp)
+
+            return result
+        
+
+        super().__init__( (n, m), _matvec, _rmatvec, dtype=np.float64, device="cpu")
+
+
 
 
 
