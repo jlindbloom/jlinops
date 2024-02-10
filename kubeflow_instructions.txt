@@ -1,0 +1,14 @@
+1. conda create --name jlinops python=3.11
+2. pip install numpy
+3. pip install scipy==1.11.4
+4. pip install jlinops
+5. conda install -c conda-forge cupy
+6. pip install ipykernel
+7. pip install notebook
+8. pip install matplotlib
+9. pip install PyWavelets
+10. pip install fastprogress
+
+
+
+

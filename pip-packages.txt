@@ -4,23 +4,18 @@ appnope==0.1.3
 argon2-cffi==23.1.0
 argon2-cffi-bindings==21.2.0
 arrow==1.3.0
-arviz @ file:///home/conda/feedstock_root/build_artifacts/arviz_1703767184699/work
 asttokens==2.4.1
 async-lru==2.0.4
 attrs==23.1.0
 Babel==2.13.1
 beautifulsoup4==4.12.2
 bleach==6.1.0
-cached-property @ file:///home/conda/feedstock_root/build_artifacts/cached_property_1615209429212/work
-certifi @ file:///home/conda/feedstock_root/build_artifacts/certifi_1700303426725/work/certifi
 cffi==1.16.0
 charset-normalizer==3.3.2
 click==8.1.7
 click-plugins==1.1.1
 cligj==0.7.2
 comm==0.2.0
-contourpy @ file:///Users/runner/miniforge3/conda-bld/contourpy_1699041684283/work
-cycler @ file:///home/conda/feedstock_root/build_artifacts/cycler_1696677705766/work
 debugpy==1.8.0
 decorator==5.1.1
 defusedxml==0.7.1
@@ -29,15 +24,11 @@ fastjsonschema==2.19.0
 fastprogress==1.0.3
 fonttools==4.45.1
 fqdn==1.5.1
-h5netcdf @ file:///home/conda/feedstock_root/build_artifacts/h5netcdf_1699412745362/work
-h5py @ file:///Users/runner/miniforge3/conda-bld/h5py_1702471377795/work
 idna==3.6
 ipykernel==6.26.0
-ipython==8.18.1
 isoduration==20.11.0
 jedi==0.19.1
 Jinja2==3.1.2
--e git+ssh://git@github.com/jlindbloom/jlinops.git@690bb4a72d3916d85bfd0f9bd14ef66ee2f2679e#egg=jlinops
 json5==0.9.14
 jsonpointer==2.4
 jsonschema==4.20.0
@@ -51,9 +42,7 @@ jupyter_server_terminals==0.4.4
 jupyterlab==4.0.9
 jupyterlab_pygments==0.3.0
 jupyterlab_server==2.25.2
-kiwisolver @ file:///Users/runner/miniforge3/conda-bld/kiwisolver_1695379978135/work
 MarkupSafe==2.1.3
-matplotlib @ file:///Users/runner/miniforge3/conda-bld/matplotlib-suite_1700509530732/work
 matplotlib-inline==0.1.6
 mistune==3.0.2
 munkres==1.1.4
@@ -61,17 +50,12 @@ nbclient==0.9.0
 nbconvert==7.11.0
 nbformat==5.9.2
 nest-asyncio==1.5.8
-networkx==3.2.1
 notebook==7.0.6
 notebook_shim==0.2.3
-numpy @ file:///Users/runner/miniforge3/conda-bld/numpy_1704280713851/work/dist/numpy-1.26.3-cp311-cp311-macosx_10_9_x86_64.whl#sha256=e5743de9da663f14695cfbd94bdc0c562e012d923feb07c4251c2610db2fd8e4
 overrides==7.4.0
-packaging @ file:///home/conda/feedstock_root/build_artifacts/packaging_1696202382185/work
-pandas @ file:///Users/runner/miniforge3/conda-bld/pandas_1702057419771/work
 pandocfilters==1.5.0
 parso==0.8.3
 pexpect==4.9.0
-pillow @ file:///Users/runner/miniforge3/conda-bld/pillow_1704252156072/work
 platformdirs==4.0.0
 plotly==5.18.0
 POT==0.9.3
@@ -82,11 +66,7 @@ ptyprocess==0.7.0
 pure-eval==0.2.2
 pycparser==2.21
 Pygments==2.17.2
-pyparsing @ file:///home/conda/feedstock_root/build_artifacts/pyparsing_1690737849915/work
-python-dateutil @ file:///home/conda/feedstock_root/build_artifacts/python-dateutil_1626286286081/work
 python-json-logger==2.0.7
-pytz @ file:///home/conda/feedstock_root/build_artifacts/pytz_1693930252784/work
-PyWavelets @ file:///Users/runner/miniforge3/conda-bld/pywavelets_1695567681914/work
 PyYAML==6.0.1
 pyzmq==25.1.1
 rasterio==1.3.9
@@ -96,10 +76,7 @@ rfc3339-validator==0.1.4
 rfc3986-validator==0.1.1
 rpds-py==0.13.1
 runningstatistics==0.0.1
--e git+ssh://git@github.com/jlindbloom/sampi.git@7a19b4a1353f39d2643505bddaff49802ba7f4ae#egg=sampi
-SciPy @ file:///Users/runner/miniforge3/conda-bld/scipy-split_1700812582578/work/dist/scipy-1.11.4-cp311-cp311-macosx_10_9_x86_64.whl#sha256=5b875a53aeeb67c8451f09cb04406bae2b2ac7255cf4b820ae8098cfc1031194
 Send2Trash==1.8.2
-six @ file:///home/conda/feedstock_root/build_artifacts/six_1620240208055/work
 sniffio==1.3.0
 snuggs==1.4.7
 soupsieve==2.5
@@ -108,16 +85,11 @@ tenacity==8.2.3
 terminado==0.18.0
 tinycss2==1.2.1
 tornado==6.3.3
--e git+ssh://git@github.com/jlindbloom/randomized-trace-logdet-diag.git@85063624c8095421d99afe40deb9af07153e3b60#egg=tracelogdetdiag
 traitlets==5.14.0
 types-python-dateutil==2.8.19.14
-typing_extensions @ file:///home/conda/feedstock_root/build_artifacts/typing_extensions_1702176139754/work
-tzdata @ file:///home/conda/feedstock_root/build_artifacts/python-tzdata_1703878702368/work
 uri-template==1.3.0
 urllib3==2.1.0
 wcwidth==0.2.12
 webcolors==1.13
 webencodings==0.5.1
 websocket-client==1.6.4
-xarray @ file:///home/conda/feedstock_root/build_artifacts/xarray_1702072927808/work
-xarray-einstats @ file:///home/conda/feedstock_root/build_artifacts/xarray-einstats_1689089835984/work
