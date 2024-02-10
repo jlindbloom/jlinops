@@ -184,6 +184,42 @@ def build_neumann2d_sparse_matrix(grid_shape):
 
 
 
+def get_neumann2d_laplacian_diagonal(grid_shape):
+    """Returns a vector containing the diagonal of the Neumann2D laplacian.
+    """
+
+    m, n = grid_shape
+    d = 4*np.ones(math.prod(grid_shape))
+
+    # Inner 3's
+    d[ n : -n : n ] -= 1
+    d[ 2*n - 1 : -n : n ] -= 1
+
+    # First and last 2's, and 3's
+    d[0] = 2
+    d[-1] = 2
+    d[n-1] = 2
+    d[-n] = 2
+    d[1:n-1] = 3
+    d[-n+1:-1] = 3
+
+    return d
+
+
+
+def get_neumann2d_laplacian_tridiagonal(grid_shape):
+    """Returns a vector containing the tridiagonal of the Neumann2D laplacian.
+    """
+    d = get_neumann2d_laplacian_diagonal(grid_shape)
+    m, n = grid_shape
+    l = -1*np.ones(math.prod(grid_shape) - 1)
+    l[n-1::n] = 0
+
+    return l.copy(), d, l.copy()
+
+
+
+
 def build_dirichlet2d_sparse_matrix(grid_shape):
     """Makes a sparse matrix corresponding to the matrix-free Dirichlet2D operator.
     """
@@ -191,6 +227,8 @@ def build_dirichlet2d_sparse_matrix(grid_shape):
     Q, _ = first_order_derivative_2d(grid_shape, boundary="zero")
 
     return Q
+
+
 
 
 

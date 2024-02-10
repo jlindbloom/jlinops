@@ -22,6 +22,11 @@ from .util import issparse, tosparse, get_device
 from .linalg import dct_sqrt, dct_sqrt_pinv
 
 
+from .derivatives import get_neumann2d_laplacian_diagonal, get_neumann2d_laplacian_tridiagonal
+from .inv import TridiagInvOperator
+
+
+
 from . import CUPY_INSTALLED
 if CUPY_INSTALLED:
     import cupy as cp
@@ -318,6 +323,7 @@ class CGWeightedNeumann2DPinvOperator(_CustomLinearOperator):
         self.warmstart_prev = warmstart_prev
         self.check = check
         self.which = which
+        self.dct_eps = dct_eps
         self.args = args
         self.kwargs = kwargs
         
@@ -355,11 +361,93 @@ class CGWeightedNeumann2DPinvOperator(_CustomLinearOperator):
         
 
     def to_gpu(self):
-        return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.asarray(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
+        return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.asarray(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, dct_eps=self.dct_eps, *self.args, **self.kwargs)
     
     def to_cpu(self):
-        return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.numpy(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
+        return CGWeightedNeumann2DPinvOperator(self.grid_shape, cp.numpy(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, dct_eps=self.dct_eps, *self.args, **self.kwargs)
     
+
+
+
+class CGWeightedNeumann2DSimplePinvOperator(_CustomLinearOperator):
+    """Represents the pseudoinverse (R_w)^\dagger of a linear operator R_w = D_w R, where
+    D_w is a diagonal matrix of weights and R is a Neumann2D operator.
+    Here matvecs/rmatvecs are applied approximately using a preconditioned conjugate
+    gradient method, where the preconditioner is based on the operator with identity weights. 
+    """
+
+    def __init__(self, grid_shape, weights, which="diagonal", *args, **kwargs):
+
+        assert 2*math.prod(grid_shape) == len(weights), "Weights incompatible!"
+        assert which in ["diagonal", "tridiagonal"], f"which must be one of diagonal, tridiagonal."
+        self.weights = weights
+        self.grid_shape = grid_shape
+        self.n = math.prod(grid_shape)
+        # self.warmstart_prev = warmstart_prev
+        # self.check = check
+        self.which = which
+        self.args = args
+        self.kwargs = kwargs
+        
+        # Figure out device
+        self.device = get_device(weights)
+
+        # Build R and R_w
+        self.R = Neumann2D(grid_shape, device=self.device)
+        self.m = self.R.shape[0]
+        self.RtR = self.R.T @ self.R
+        self.Dw = DiagonalOperator(weights)
+        self.Rw = self.Dw @ self.R
+        self.C = self.Rw.T @ self.Rw
+        
+
+        # Set up preconditioning operator
+        if self.which == "diagonal":
+
+            # Get diagonal
+            d = get_neumann2d_laplacian_diagonal(self.grid_shape)
+            M = DiagonalOperator(1.0/d)
+
+        elif self.which == "tridiagonal":
+            
+            l, d, u = get_neumann2d_laplacian_tridiagonal(self.grid_shape)
+            M = TridiagInvOperator(l, d, u)
+
+        else:
+
+            raise NotImplementedError
+
+        self.M = M
+
+        def _matvec(x):
+
+            tmp = self.Rw.rmatvec(x)
+            sol, converged = sp_cg( self.C, tmp, x0=None, M=self.M, *args, **kwargs) 
+            
+            return sol
+        
+        def _rmatvec(x):
+
+            sol, converged = sp_cg( self.C, x, x0=None, M=M, *args, **kwargs) 
+            tmp = self.Rw.matvec(sol)
+
+            return tmp
+
+        
+        super().__init__( (self.n, self.m), _matvec, _rmatvec, dtype=np.float64, device="cpu")
+
+    def to_gpu(self):
+        return CGWeightedNeumann2DSimplePinvOperator( self.grid_shape, cp.asarray(self.weights), which=self.which, *self.args, **self.kwargs)
+    
+    def to_cpu(self):
+        return CGWeightedNeumann2DSimplePinvOperator( self.grid_shape, cp.asnumpy(self.weights), which=self.which, *self.args, **self.kwargs)
+    
+
+
+
+
+
+
 
 
 
@@ -372,7 +460,7 @@ class CGWeightedDirichlet2DSymPinvOperator(_CustomLinearOperator):
     gradient method, where the preconditioner is based on the operator with identity weights. 
     """
 
-    def __init__(self, grid_shape, weights, warmstart_prev=False, check=False, which="scipy", dct_eps=1e-14, *args, **kwargs):
+    def __init__(self, grid_shape, weights, warmstart_prev=False, check=False, which="scipy", dst_eps=1e-14, *args, **kwargs):
 
         device = get_device(weights)
         self.R = Dirichlet2DSym(grid_shape, device=device)
@@ -382,6 +470,7 @@ class CGWeightedDirichlet2DSymPinvOperator(_CustomLinearOperator):
         self.warmstart_prev = warmstart_prev
         self.check = check
         self.which = which
+        self.dst_eps = dst_eps
         self.args = args
         self.kwargs = kwargs
         
@@ -392,7 +481,7 @@ class CGWeightedDirichlet2DSymPinvOperator(_CustomLinearOperator):
         self.Rw = self.Dw @ self.R
 
         # Get Rpinv (with identity weights)
-        self.RtRpinv = dst_pinv( self.RtR, grid_shape, eps=dct_eps )
+        self.RtRpinv = dst_pinv( self.RtR, grid_shape, eps=self.dst_eps )
 
         # Take care of W (columns span the kernel of R)
         if device == "cpu":
@@ -404,7 +493,7 @@ class CGWeightedDirichlet2DSymPinvOperator(_CustomLinearOperator):
         self.Wpinv = QRPinvOperator(self.W)
 
         # Make Rwpinv
-        self.Rwpinv = CGPreconditionedPinvModOperator(self.Rw, self.W, self.Wpinv, self.RtRpinv, warmstart_prev=warmstart_prev, check=check, which=which, *args, **kwargs)
+        self.Rwpinv = CGPreconditionedPinvModOperator(self.Rw, self.W, self.Wpinv, self.RtRpinv, warmstart_prev=warmstart_prev, check=check, which=which, dst_eps=self.dst_eps, *args, **kwargs)
 
         def _matvec(x):
             return self.Rwpinv.matvec(x)
@@ -418,6 +507,7 @@ class CGWeightedDirichlet2DSymPinvOperator(_CustomLinearOperator):
     def to_gpu(self):
         return CGWeightedDirichlet2DSymPinvOperator(self.grid_shape, cp.asarray(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
     
+
     def to_cpu(self):
         return CGWeightedDirichlet2DSymPinvOperator(self.grid_shape, cp.numpy(self.weights), warmstart_prev=self.warmstart_prev, check=self.check, which=self.which, *self.args, **self.kwargs)
     
