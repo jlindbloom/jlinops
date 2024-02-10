@@ -9,7 +9,7 @@ from .linalg import banded_cholesky
 from . import CUPY_INSTALLED
 if CUPY_INSTALLED:
     import cupy as cp
-    from cupyx.scipy.linalg import solve_banded as cp_solve_banded
+    #from cupyx.scipy.linalg import solve_banded as cp_solve_banded
     from cupyx.scipy.linalg import solve_triangular as cp_solve_triangular
     from cupy.linalg import qr as cp_qr
     from cupyx.scipy.sparse.linalg import SuperLU as cp_SuperLU
@@ -169,6 +169,8 @@ class TridiagInvOperator(_CustomLinearOperator):
 
 
     def to_gpu(self):
+        
+        raise NotImplementedError
         l = cp.asarray(self.l)
         d = cp.asarray(self.d)
         u = cp.asarray(self.u)
