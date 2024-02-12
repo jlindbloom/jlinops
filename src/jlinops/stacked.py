@@ -6,6 +6,13 @@ from .util import split_array, device_to_module
 
 
 
+
+from . import CUPY_INSTALLED
+if CUPY_INSTALLED:
+    import cupy as cp
+ 
+
+
 class StackedOperator(_CustomLinearOperator):
     """Represents a 'stacked' LinearOperator.
     
@@ -41,7 +48,11 @@ class StackedOperator(_CustomLinearOperator):
             evals = []
             for j, subset in enumerate(split_array(x, self._lengths)):
                 evals.append(self.operators[j].rmatvec(subset))
-            return xp.sum(evals, axis=0)
+            
+            if xp == np:
+                return xp.sum(evals, axis=0)
+            else:
+                return xp.sum(cp.asarray(evals), axis=0)
         
         super().__init__(shape, _matvec, _rmatvec, device=device)
         

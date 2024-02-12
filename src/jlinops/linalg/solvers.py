@@ -142,7 +142,7 @@ def rlstsq(A, b, lam=1.0, shift=None, initialization=None, *args, **kwargs):
     device = A.device
     xp = device_to_module(device)
     n = A.shape[1]
-    Atilde = StackedOperator([A, xp.sqrt(lam)*IdentityOperator((n,n), device=device)])
+    Atilde = StackedOperator([A, np.sqrt(lam)*IdentityOperator((n,n), device=device)])
     if shift is None:
         shift = xp.zeros(n)
     rhs = xp.hstack([b, xp.sqrt(lam)*shift])
@@ -266,7 +266,7 @@ def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, shift=None, R=None, ini
     # Build oblique pseudoinverse
     if AWpinv is None:
         AWpinv = QRPinvOperator( A.matmat(W.A) )
-    oblique_pinv = ( IdentityOperator((n,n)) -  W @ (AWpinv @ A)  ) @ Rpinv
+    oblique_pinv = ( IdentityOperator((n,n), device=device) -  W @ (AWpinv @ A)  ) @ Rpinv
     
     # Get contribution from kernel
     x_null = W @ (AWpinv @ b)

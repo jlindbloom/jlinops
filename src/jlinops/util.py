@@ -78,7 +78,10 @@ def split_array(x, lengths):
     xp = get_module(x)
     assert xp.ndim(x) == 1, "input vector must be 1-dimensional."
     n = len(x)
-    return np.split(x, xp.cumsum(lengths)[:-1])
+    if xp == np:
+        return xp.split(x, xp.cumsum(lengths)[:-1])
+    else:
+        return xp.split(x,   xp.cumsum(cp.asarray(lengths)).tolist()[:-1])
     
     
     

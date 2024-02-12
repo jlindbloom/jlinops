@@ -110,7 +110,7 @@ class BandedCholeskyPinvOperator(_CustomLinearOperator):
         # Switch to CPU superlu
         superlu = cp_SuperLU(self.superlu)
         
-        return BandedCholeskyPinvOperator(self._matvecA.to_gpu(), delta=self.delta, _superlu=superlu)
+        return BandedCholeskyPinvOperator(self.A.to_gpu(), delta=self.delta, _superlu=superlu)
     
     
     def to_cpu(self):

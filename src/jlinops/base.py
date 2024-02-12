@@ -568,7 +568,7 @@ class LinearOperator:
         return _AdjointLinearOperator(self)
 
     def _transpose(self):
-        """ Default implementation of _transpose; defers to rmatvec + conj"""
+        """Default implementation of _transpose; defers to rmatvec + conj"""
         return _TransposedLinearOperator(self)
     
     def to_cpu(self):
@@ -580,6 +580,25 @@ class LinearOperator:
         """Method defining how to build the gpu version of the operator.
         """
         raise NotImplementedError
+
+    def assert_device(self, device):
+        """Enforces that the operator is on the given device. 
+        """
+        assert device in ["cpu", "gpu"], "device must be cpu or gpu."
+        
+        if self.device == device:
+            return self
+        else:
+            if (self.device == "cpu") and (device == "gpu"):
+                return self.to_gpu()
+            elif (self.device == "cpu") and (device == "cpu"):
+                return self
+            elif (self.device == "gpu") and (device == "gpu"):
+                return self
+            elif (self.device == "gpu") and (device == "cpu"):
+                return self.to_cpu()
+            else:
+                raise NotImplementedError
 
 
 
