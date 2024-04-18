@@ -15,12 +15,13 @@ from .base import _CustomLinearOperator, _AdjointLinearOperator
 from .linalg import *
 from .diagonal import *
 from .stacked import *
+from .triangular import *
 from .blurring import *
 from .local_averaging import *
 from .subsampling import *
 from .local_averaging import *
 from .derivatives import *
-from .wavelets import *
+#from .wavelets import *
 from .structured import *
 from .interpolation import *
 from .linear_solvers import *

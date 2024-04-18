@@ -1,5 +1,7 @@
 import numpy as np
 import math
+from scipy.fft import dct as sp_dct
+from scipy.fft import idct as sp_idct
 from scipy.fft import dctn as sp_dctn
 from scipy.fft import idctn as sp_idctn
 from scipy.sparse.linalg import LinearOperator
@@ -14,6 +16,47 @@ if CUPY_INSTALLED:
     import cupy as cp
     from cupyx.scipy.fft import dctn as cp_dctn
     from cupyx.scipy.fft import idctn as cp_idctn
+
+
+
+
+class DCT(_CustomLinearOperator):
+    """Represents a 1-dimensional DCT transform.
+    """
+    def __init__(self, n, device="cpu", type=2):
+        
+        # Handle shape
+        self.n = n
+        self.type = type
+        shape = (n,n)
+        
+        if device == "cpu":
+            
+            def _matvec(x):
+                return sp_dct( x, norm="ortho", type=self.type )
+            
+            def _rmatvec(x):
+                return sp_idct( x, norm="ortho", type=self.type )
+            
+        else:
+            
+            raise NotImplementedError
+        
+            # def _matvec(x):
+            #     return cp_dctn( x.reshape(self.grid_shape), norm="ortho", type=self.type ).flatten()
+            
+            # def _rmatvec(x):
+            #     return cp_idctn( x.reshape(self.grid_shape), norm="ortho", type=self.type ).flatten()
+              
+        super().__init__(shape, _matvec, _rmatvec, device=device)
+        
+    
+    def to_gpu(self):
+        return DCT(self.n, device="gpu", type=self.type)
+    
+    def to_cpu(self):
+        return DCT(self.n, device="cpu", type=self.type)
+    
 
     
     

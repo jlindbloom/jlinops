@@ -8,6 +8,9 @@ from scipy.sparse.linalg import SuperLU as sp_SuperLU
 from scipy.sparse.linalg import cg as sp_cg
 import scipy.sparse as sps
 
+from scipy.fft import dct as sp_dct
+from scipy.fft import idct as sp_idct
+
 
 
 from .base import MatrixLinearOperator, _CustomLinearOperator, IdentityOperator
@@ -15,14 +18,14 @@ from .linalg.factorizations import banded_cholesky
 from .diagonal import DiagonalOperator
 from .derivatives import Neumann2D, Dirichlet2DSym
 # from .cginv import CGDirichlet2DSymLapInvOperator, CGWeightedDirichlet2DSymLapInvOperator
-from .linalg.dct import dct_sqrt_pinv, dct_pinv
+from .linalg.dct import dct_sqrt_pinv, dct_pinv, DCT
 from .linalg.dst import dst_sqrt_pinv, dst_pinv
 from .linear_solvers import cg
 from .util import issparse, tosparse, get_device
 from .linalg import dct_sqrt, dct_sqrt_pinv
 
 
-from .derivatives import get_neumann2d_laplacian_diagonal, get_neumann2d_laplacian_tridiagonal
+from .derivatives import get_neumann2d_laplacian_diagonal, get_neumann2d_laplacian_tridiagonal, first_order_derivative_1d
 from .inv import TridiagInvOperator
 
 
@@ -119,6 +122,95 @@ class BandedCholeskyPinvOperator(_CustomLinearOperator):
 
 
 
+
+
+class BandedCholeskySymPinvOperator(_CustomLinearOperator):
+    """Takes a symmetric MatrixLinearOperator A and builds a linear operator representing an approximation to the 
+    pseudo-inverse of A. This is most efficient if A is sparse and (already) banded.
+    """
+
+    def __init__(self, A, delta=1e-3, _superlu=None):
+
+        assert isinstance(A, MatrixLinearOperator), "Must give MatrixOperator as an input."
+        
+        # Bind
+        self.original_op = A
+        self.original_shape = A.shape
+        self.delta = delta
+        
+        # Device
+        device = A.device
+        
+        # Original shape
+        k, n = A.shape
+        
+        # Enforce that underling A is a sparse type
+        if not issparse(A.A):
+            A = MatrixLinearOperator( tosparse(A.A).tocsc() )
+        else:
+            pass
+  
+        
+        # Even if on GPU, factorize and make superlu object on CPU
+        if device == "cpu":
+            A_cpu = A
+        else:
+            A_cpu = A.to_cpu()
+            
+        # Matrix we will factorize
+        mat = A_cpu.A + self.delta*sps.eye(n)
+        
+        if _superlu is None:
+            
+            # Perform factorization
+            chol_fac, superlu = banded_cholesky( mat )
+            
+            # Make GPU superlu object if applicable
+            if device == "gpu":
+                superlu = cp_SuperLU(superlu)
+                
+        else: 
+            superlu = _superlu
+            pass
+        
+        
+            
+        # Bind superlu and A
+        self.superlu = superlu
+        self.A = A
+            
+        # Build matvec and rmatvec
+        def _matvec(x):
+            #tmp = self.A.rmatvec(x)
+            tmp = self.superlu.solve(x, trans="N")
+            return tmp
+        
+        # def _rmatvec(x):
+        #     tmp = self.superlu.solve(x, trans="T")
+        #     tmp = self.A.matvec(tmp)
+        #     return tmp
+        
+        super().__init__( (n,n), _matvec, _matvec, device=device, dtype=A.dtype)
+        
+        
+    def to_gpu(self):
+        
+        # Switch to CPU superlu
+        superlu = cp_SuperLU(self.superlu)
+        
+        return BandedCholeskyPinvOperator(self.A.to_gpu(), delta=self.delta, _superlu=superlu)
+    
+    
+    def to_cpu(self):
+        
+        raise NotImplementedError
+
+
+
+
+
+
+
 class QRPinvOperator(_CustomLinearOperator):
     """Takes a dense matrix A with full column rank, builds a linear operator representing the pseudo-inverse of A
     using the QR method.
@@ -176,6 +268,45 @@ class QRPinvOperator(_CustomLinearOperator):
     
     def to_cpu(self):
         return QRPinvOperator(self.original_op.to_cpu())
+
+
+
+
+
+def get_1d_lap_reflexive_pinv(n, eps=1e-14):
+    """Returns a linear operator implementing M^\dagger, 
+    where M = R^T R is a laplacian with reflexive boundary 
+    conditions made using first_order_derivative_1d
+    with reflexive boundary.
+    """
+
+    R, _ = first_order_derivative_1d(n, boundary="reflexive")
+    A = R.T @ R
+
+    # Compute eigenvalues
+    v = np.random.normal(size=n) + 10.0
+    tmp = A @ sp_idct( v, norm="ortho" )  
+    tmp = sp_dct( tmp, norm="ortho" )
+    eigvals = tmp/v.flatten()
+    
+    # Take reciprocal of nonzeros and build pinv operator
+    recip_eigvals = np.where( np.abs(eigvals) < eps, eigvals, 1.0 / np.clip(eigvals, a_min=eps, a_max=None) )
+    recip_eigvals = np.where( np.abs(eigvals) < eps, np.zeros_like(eigvals), recip_eigvals )
+    D = DiagonalOperator(recip_eigvals)
+    P = DCT(n)
+
+    return P.T @ (D @ P)
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1066,7 +1197,69 @@ class CGModPinvOperator(_CustomLinearOperator):
     def to_cpu(self):
         return CGPModinvOperator(self.A.to_cpu(), self.W.to_cpu(), self.Wpinv.to_cpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)
 
+
+
+
+
+class PCGSSPDPinvOperator(_CustomLinearOperator):
+    """Returns a linear operator that approximately computes the pseudoinverse of a SSPD matrix A using 
+    a preconditioned conjugate gradient method. Modifed so that it only ever solves systems with A^T A. 
     
+    W: a LinearOperator representing a matrix with linearly independent columns that spans null(A).
+    Wpinv: a LinearOperator represening the pseudoinverse of W.
+    Mpinv: preconditioner with col(M) = col(A).
+    """
+
+    def __init__(self, A, Mpinv, W, Wpinv=None, check=False, *args, **kwargs):
+        
+        device = A.device
+        n = A.shape[1]
+        shape = (n,n)
+        self.A = A
+        self.Mpinv = Mpinv
+        self.W = W
+        self.check = check
+
+        # Build Wpinv if not passed
+        if Wpinv is None:
+            self.Wpinv = QRPinvOperator(W.A)
+        else:
+            self.Wpinv = Wpinv
+
+        if device == "cpu":
+
+            def _matvec(x):
+                # Project onto col(A)
+                x -= self.W @ (self.Wpinv @ x)
+                sol, converged = sp_cg(self.A, x, *args, **kwargs) 
+                if self.check:
+                    assert converged == 0, "CG algorithm did not converge!"
+                
+                return sol
+        else:
+            raise NotImplementedError
+
+
+        super().__init__( shape, _matvec, _matvec, dtype=np.float64, device=device)
+        
+        
+    def to_gpu(self):
+        raise NotImplementedError
+       
+    
+        
+    def to_cpu(self):
+        raise NotImplementedError
+    
+
+
+
+
+
+
+
+
+
     
 class CGPreconditionedPinvOperator(_CustomLinearOperator):
     """Returns a linear operator that approximately computes the pseudoinverse of a matrix A using 
