@@ -32,6 +32,7 @@ from .pseudoinverse import *
 from .oblique import *
 from .data import *
 from .proximal import *
+from .block import *
 
 from .linalg import *
 

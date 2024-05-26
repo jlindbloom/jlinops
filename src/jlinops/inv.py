@@ -1,10 +1,15 @@
 import numpy as np
 
 from scipy.linalg import solve_banded as sp_solve_banded
+from scipy.sparse.linalg import cg as sp_cg
 
-from .base import MatrixLinearOperator, _CustomLinearOperator 
+from .base import MatrixLinearOperator, _CustomLinearOperator
 from .util import issparse, tosparse, get_device
 from .linalg import banded_cholesky
+from .derivatives import Dirichlet2DSym
+from .diagonal import DiagonalOperator
+from .linalg import dst_pinv
+
 
 from . import CUPY_INSTALLED
 if CUPY_INSTALLED:
@@ -182,6 +187,78 @@ class TridiagInvOperator(_CustomLinearOperator):
         u = cp.asnumpy(self.u)
         return TridiagInvOperator(l, d, u)
     
+
+
+
+
+    
+class Dirichelt2DSymLaplacianInv(_CustomLinearOperator):
+    """Represents the inverse of the Laplacian R^T R, where R is a Dirichlet2D operator.
+    Here matvecs/rmatvecs are applied using a DST transform method. 
+    """
+    
+    def __init__(self, grid_shape, device="cpu", eps=1e-14):
+        
+        # Grid shape
+        self.grid_shape = grid_shape
+        self.eps = eps
+        
+        # Neumann2D operator
+        self.R = Dirichlet2DSym(grid_shape, device=device)
+        self.Apinv = dst_pinv(self.R.T @ self.R, grid_shape, eps=self.eps)
+        
+        def _matvec(x):
+            return self.Apinv.matvec(x)
+
+        def _rmatvec(x):
+            return self.Apinv.rmatvec(x)
+        
+        super().__init__( self.Apinv.shape, _matvec, _matvec, dtype=np.float64, device=device)
+        
+    def to_gpu(self):
+        return Dirichelt2DSymLaplacianInv(self.grid_shape, device="gpu", eps=self.eps)
+    
+    def to_cpu(self):
+        return Dirichelt2DSymLaplacianInv(self.grid_shape, device="cpu", eps=self.eps)
+
+
+
+
+
+
+
+class CGWeightedDirichlet2DSymLaplacianInv(_CustomLinearOperator):
+    """Represents the inverse of the weighted Laplacian operator R^T D_w R
+    equipped with Dirichlet boundary conditions.
+    """
+
+    def __init__(self, grid_shape, weights, check=True, *args, **kwargs):
+
+        # Make both operators
+        self.grid_shape = grid_shape
+        self.R = Dirichlet2DSym(grid_shape)
+        self.n = self.R.shape[1] 
+        self.weights = weights
+        self.Lw = self.R.T @ (DiagonalOperator(self.weights) @ self.R)
+        self.args = args
+        self.kwargs = kwargs
+
+        # Misc
+        self.check = check
+
+        # Build preconditioner
+        self.M = Dirichelt2DSymLaplacianInv(self.grid_shape, device="cpu")
+
+        def _matvec(x):
+
+            sol, converged = sp_cg( self.Lw, x, x0=np.zeros(self.n), M=self.M, *self.args, **self.kwargs) 
+            if self.check:
+                assert converged == 0, "CG algorithm did not converge!"
+           
+            return sol
+
+
+        super().__init__( (self.n, self.n), _matvec, _matvec, dtype=np.float64, device="cpu")
 
 
 

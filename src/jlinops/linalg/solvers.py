@@ -347,8 +347,8 @@ def epcgls(F, R, Mpinv, W, b, FWpinv=None, shift=None, x0=None, maxiter=None, to
     m = F.shape[0]
     k = R.shape[0]
     
-
-    Wpinv = MatrixLinearOperator(QRPinvOperator(W.A))
+    
+    #Wpinv = MatrixLinearOperator(QRPinvOperator(W.A))
     # Quick fix
     b1 = b
     if shift is None:
@@ -357,7 +357,11 @@ def epcgls(F, R, Mpinv, W, b, FWpinv=None, shift=None, x0=None, maxiter=None, to
         b2 = shift
 
     if FWpinv is None:
-        FWpinv = QRPinvOperator(F @ W.A)
+        if W is not None:
+            FWpinv = QRPinvOperator(F @ W.A)
+        else:
+            W = MatrixLinearOperator(np.zeros((n, 1)))
+            FWpinv = MatrixLinearOperator( np.zeros((1, m)) )
     else:
         pass
     #print(FWpinv)
@@ -375,7 +379,8 @@ def epcgls(F, R, Mpinv, W, b, FWpinv=None, shift=None, x0=None, maxiter=None, to
         x = np.zeros(n)
     else: 
         #x = x0
-        x = G @ ( Mpinv @ ( R.T @ R @ x0  ) ) # Project to be safe
+        x = G @ x0
+        #x = G @ ( Mpinv @ ( R.T @ R @ x0  ) ) # Project to be safe
         #x = x0 - W @ (FWpinv @ x0)
 
     if maxiter is None:
@@ -446,6 +451,7 @@ def epcgls(F, R, Mpinv, W, b, FWpinv=None, shift=None, x0=None, maxiter=None, to
             x += alpha*zeta
             #x = G @ ( Mpinv @ ( R.T @ R @ x  ) ) # Project to be safe
             #x -= W @ (FWpinv @ x)
+            x = G @ x
             d -= alpha*z
             d1, d2 = d[:m], d[m:]
             omega = Mpinv @ (H.T @ d1) 
