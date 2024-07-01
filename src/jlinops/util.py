@@ -102,6 +102,16 @@ def issparse(x):
     return sp_check or cp_check
 
 
+def islinoplike(A):
+    """Given a linear operator A, checks if it has a matvec method associated with it.
+    """
+    
+    if hasattr(A, 'matvec'):
+        return True
+    else:
+        return False
+
+
 
 def tosparse(x):
     """Converts an input array to a sparse type. Currently only supports converting to a csr matrix.

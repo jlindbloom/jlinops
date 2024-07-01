@@ -8,7 +8,7 @@ from scipy.sparse._sputils import is_pydata_spmatrix
 # SciPy 1.11.4
 # CuPy 12.2
 
-from .util import issparse, isshape, isintlike, asmatrix, get_device
+from .util import issparse, isshape, isintlike, asmatrix, get_device, islinoplike
 
 from . import CUPY_INSTALLED
 if CUPY_INSTALLED:
@@ -166,7 +166,12 @@ class LinearOperator:
         Falls back on the user-defined _matvec method, so defining that will
         define matrix multiplication (though in a very suboptimal way).
         """
+        # print(X.T)
+        # print()
+        # for col in X.T:
+        #     print(col.shape)
 
+        # print()
         return np.hstack([self.matvec(col.reshape(-1,1)) for col in X.T])
 
     def _matvec(self, x):
@@ -432,6 +437,8 @@ class LinearOperator:
         """
         if isinstance(x, LinearOperator):
             return _ProductLinearOperator(self, x)
+        elif islinoplike(x):
+            return _ProductLinearOperator(self, x)
         elif np.isscalar(x):
             return _ScaledLinearOperator(self, x)
         else:
@@ -445,7 +452,8 @@ class LinearOperator:
             if x.ndim == 1:
                 return self.matvec(x)
             elif (x.ndim == 2) and (x.shape[1] == 1):
-                return np.atleast_2d(self.matvec(x[:,0])).T
+                return self.matvec(x)
+                #return np.atleast_2d(self.matvec(x[:,0])).T
             elif (x.ndim == 2) and (x.shape[1] != 1):
                 return self.matmat(x)
             else:
@@ -757,8 +765,8 @@ class _SumLinearOperator(LinearOperator):
 
 class _ProductLinearOperator(LinearOperator):
     def __init__(self, A, B):
-        if not isinstance(A, LinearOperator) or \
-                not isinstance(B, LinearOperator):
+        if not ( isinstance(A, LinearOperator) or islinoplike(A) ) or \
+                not ( isinstance(B, LinearOperator) or islinoplike(B) ) :
             raise ValueError('both operands have to be a LinearOperator')
         if A.shape[1] != B.shape[0]:
             raise ValueError(f'cannot multiply {A} and {B}: shape mismatch')
@@ -1001,6 +1009,9 @@ def aslinearoperator(A):
 
     if isinstance(A, LinearOperator):
         return A
+    
+    elif islinoplike(A):
+        return _CustomLinearOperator(A.shape, matvec=lambda x: A.matvec(x), rmatvec=lambda x: A.rmatvec(x), dtype=A.dtype, device="cpu")
 
     elif isinstance(A, np.ndarray) or isinstance(A, np.matrix):
         if A.ndim > 2:

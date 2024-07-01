@@ -35,12 +35,14 @@ class BlockDiagonalOperator(_CustomLinearOperator):
 
         # Define matvecs
         def _matvec(x):
+            x = x.reshape(-1)
             pieces = []
             for j, op in enumerate(self.As):
                 pieces.append( op.matvec(x[self.idxs[j]]) )
             return np.hstack(pieces)
         
         def _rmatvec(x):
+            x = x.reshape(-1)
             pieces = []
             for j, op in enumerate(self.As):
                 pieces.append( op.rmatvec(x[self.idxs[j]]) )
