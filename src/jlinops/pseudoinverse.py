@@ -36,7 +36,7 @@ if CUPY_INSTALLED:
     from cupyx.scipy.linalg import solve_triangular as cp_solve_triangular
     from cupy.linalg import qr as cp_qr
     from cupyx.scipy.sparse.linalg import SuperLU as cp_SuperLU
-
+    from cupyx.scipy.sparse.linalg import cg as cupy_cg
 
 
 
@@ -326,6 +326,9 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
 
         # Device
         device = A.device
+
+        self.args = args
+        self.kwargs = kwargs
         
         # Store operator
         self.A = A
