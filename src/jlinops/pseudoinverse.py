@@ -437,14 +437,15 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
     def warmstarted_matvec(self, x, initialization):
 
         if self.device == "cpu":
+
+            if initialization is None:
+                init = None
+            else:
+                init = self.A.rmatvec(init)
                 
             def _matvec(x):
 
-                if initialization is None:
-                    init = None
-                else:
-                    init = self.A.rmatvec(init)
-
+                
                 sol, converged = sp_cg(self.C, self.A.rmatvec(x), x0=init, M=self.Mpinv, *self.args, **self.kwargs) 
                 if self.check:
                     assert converged == 0, "CG algorithm did not converge!"
@@ -457,8 +458,13 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
             return _matvec(x)
         
         else:
+             
+            if initialization is None:
+                init = None
+            else:
+                init = self.A.rmatvec(init)
 
-             def _matvec(x):
+                def _matvec(x):
                 # print(f"x: {x.shape}")
                 # print(f"C: {self.C.shape}")
                 # print(f"A^T x: {self.A.rmatvec(x).shape}")
@@ -466,21 +472,17 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
                 # print(self.C.shape)
                 # print(self.A.rmatvec(x))
 
-                if initialization is None:
-                    init = None
-                else:
-                    init = self.A.rmatvec(init)
 
-                sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=init, *self.args, **self.kwargs)
-                if self.check:
-                    assert converged == 0, "CG algorithm did not converge!"
-                
-                if self.warmstart_prev:
-                    self.prev_eval = sol.copy()
+                    sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=init, *self.args, **self.kwargs)
+                    if self.check:
+                        assert converged == 0, "CG algorithm did not converge!"
                     
-                return sol
+                    if self.warmstart_prev:
+                        self.prev_eval = sol.copy()
+                        
+                    return sol
              
-             return _matvec(x)
+            return _matvec(x)
 
         
     def to_gpu(self):
