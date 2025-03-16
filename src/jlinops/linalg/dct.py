@@ -97,7 +97,54 @@ class DCT2D(_CustomLinearOperator):
         return DCT2D(self.grid_shape, device="cpu", type=self.type)
 
     
+
+
+
+
+class DCT3D(_CustomLinearOperator):
+    """Represents a 3-dimensional DCT transform.
+    Convention is (Nx, Ny, Nt). For spatiotemporal problems?
+    """
+    def __init__(self, voxel_shape, device="cpu", type=2):
+        
+        # Handle shape
+        self.voxel_shape = voxel_shape
+        n = math.prod(self.voxel_shape)
+        self.type = type
+        shape = (n,n)
+        
+        if device == "cpu":
+            
+            def _matvec(x):
+                return sp_dctn( x.reshape(self.voxel_shape), norm="ortho", type=self.type ).flatten()
+            
+            def _rmatvec(x):
+                return sp_idctn( x.reshape(self.voxel_shape), norm="ortho", type=self.type ).flatten()
+            
+        else:
+            
+            def _matvec(x):
+                return cp_dctn( x.reshape(self.voxel_shape), norm="ortho", type=self.type ).flatten()
+            
+            def _rmatvec(x):
+                return cp_idctn( x.reshape(self.voxel_shape), norm="ortho", type=self.type ).flatten()
+              
+        super().__init__(shape, _matvec, _rmatvec, device=device)
+        
     
+    def to_gpu(self):
+        return DCT3D(self.voxel_shape, device="gpu", type=self.type)
+    
+    def to_cpu(self):
+        return DCT3D(self.voxel_shape, device="cpu", type=self.type)
+
+
+
+
+
+
+
+
 def dct_get_eigvals(A, grid_shape, make_pos=False, type=2):
     """Given an SSPD LinearOperator A that is diagonalized by the 2-dimensional DCT, computes its eigenvalues.
     """

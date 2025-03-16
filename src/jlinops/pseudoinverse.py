@@ -332,6 +332,8 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
         self.W = W
         self.Wpinv = Wpinv
         self.Mpinv = Mpinv
+        self.args = args
+        self.kwargs = kwargs
         
         # Shape
         m, n = A.shape
@@ -428,6 +430,37 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
         
         super().__init__( shape, _matvec, _rmatvec, dtype=np.float64, device=device)
         
+
+    def warmstarted_matvec(self, x, initialization):
+
+        if self.device == "cpu":
+                
+            def _matvec(x):
+                sol, converged = sp_cg(self.C, self.A.rmatvec(x), x0=initialization, M=self.Mpinv, *self.args, **self.kwargs) 
+                if self.check:
+                    assert converged == 0, "CG algorithm did not converge!"
+                
+                if self.warmstart_prev:
+                    self.prev_eval = sol.copy()
+                
+                return sol
+            
+            return _matvec(x, initialization)
+        
+        else:
+
+             def _matvec(x):
+                sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=initialization, *self.args, **self.kwargs)
+                if self.check:
+                    assert converged == 0, "CG algorithm did not converge!"
+                
+                if self.warmstart_prev:
+                    self.prev_eval = sol.copy()
+                    
+                return sol
+             
+             return _matvec(x, initialization)
+
         
     def to_gpu(self):
         return CGPreconditionedPinvModOperator(self.A.to_gpu(), self.W.to_gpu(), self.Wpinv.to_gpu(), self.Mpinv.to_gpu(), warmstart_prev=self.warmstart_prev, which=self.which, check=self.check, *self.args, **self.kwargs)

@@ -5,6 +5,8 @@ from ..stacked import StackedOperator
 from ..base import IdentityOperator, MatrixLinearOperator
 from ..pseudoinverse import QRPinvOperator
 
+from scipy.sparse.linalg import eigsh
+
 
 
 def cgls(A, b, x0=None, maxiter=None, return_search_vectors=False, 
@@ -276,6 +278,10 @@ def trlstsq_rntker(A, Rpinv, W, b, lam=1.0, AWpinv=None, shift=None, R=None, ini
     if shift is not None:
         assert R is not None, "R must be provided."
         shift = R @ (Rpinv @ shift)
+
+    # Print condition number estimate?
+    largest_eigenvalue_est, _ = eigsh(Atilde.T @ Atilde, k=1, which='LA')
+    print(f"Condition number estimate: {(largest_eigenvalue_est+1)}")
         
     if initialization is not None:
         assert R is not None, "R must be provided."

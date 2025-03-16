@@ -16,7 +16,7 @@ def naive_gsvd(A, L):
     A = U diag( S, I ) Xinv and L = V (M 0) Xinv.
     Code assumes that leftmost dimension of A is >= its rightmost dimension, and that
     leftmost dimension of L is <= its rightmost dimension. Furthermore, it assumes that L
-     has full column rank. This is the first method described in the regularization tools manual.
+    has full column rank. This is the first method described in the regularization tools manual.
     """
 
     n = A.shape[1]
