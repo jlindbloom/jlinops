@@ -448,7 +448,7 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
                 
                 return sol
             
-            return _matvec(x, initialization)
+            return _matvec(x)
         
         else:
 
@@ -462,7 +462,7 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
                     
                 return sol
              
-             return _matvec(x, initialization)
+             return _matvec(x)
 
         
     def to_gpu(self):
