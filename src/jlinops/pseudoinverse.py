@@ -439,7 +439,7 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
         if self.device == "cpu":
                 
             def _matvec(x):
-                sol, converged = sp_cg(self.C, self.A.rmatvec(x), x0=initialization, M=self.Mpinv, *self.args, **self.kwargs) 
+                sol, converged = sp_cg(self.C, self.A.rmatvec(x), x0=self.A.rmatvec(initialization), M=self.Mpinv, *self.args, **self.kwargs) 
                 if self.check:
                     assert converged == 0, "CG algorithm did not converge!"
                 
@@ -453,7 +453,7 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
         else:
 
              def _matvec(x):
-                sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=initialization, *self.args, **self.kwargs)
+                sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=self.A.rmatvec(initialization), *self.args, **self.kwargs)
                 if self.check:
                     assert converged == 0, "CG algorithm did not converge!"
                 
