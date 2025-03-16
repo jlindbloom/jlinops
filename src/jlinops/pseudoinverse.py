@@ -439,7 +439,13 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
         if self.device == "cpu":
                 
             def _matvec(x):
-                sol, converged = sp_cg(self.C, self.A.rmatvec(x), x0=self.A.rmatvec(initialization), M=self.Mpinv, *self.args, **self.kwargs) 
+
+                if initialization is None:
+                    init = None
+                else:
+                    init = self.A.rmatvec(init)
+
+                sol, converged = sp_cg(self.C, self.A.rmatvec(x), x0=init, M=self.Mpinv, *self.args, **self.kwargs) 
                 if self.check:
                     assert converged == 0, "CG algorithm did not converge!"
                 
@@ -453,7 +459,19 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
         else:
 
              def _matvec(x):
-                sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=self.A.rmatvec(initialization), *self.args, **self.kwargs)
+                # print(f"x: {x.shape}")
+                # print(f"C: {self.C.shape}")
+                # print(f"A^T x: {self.A.rmatvec(x).shape}")
+                # print(f"initialization: initialization.shape")
+                # print(self.C.shape)
+                # print(self.A.rmatvec(x))
+
+                if initialization is None:
+                    init = None
+                else:
+                    init = self.A.rmatvec(init)
+
+                sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=init, *self.args, **self.kwargs)
                 if self.check:
                     assert converged == 0, "CG algorithm did not converge!"
                 
