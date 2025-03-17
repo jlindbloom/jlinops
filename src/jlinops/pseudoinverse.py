@@ -436,51 +436,45 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
 
     def warmstarted_matvec(self, x, initialization):
 
-        if self.device == "cpu":
+        class IterationCounter:
+            def __init__(self):
+                self.count = 0
+            def __call__(self, xk):
+                self.count += 1
 
-            if initialization is None:
-                init = None
-            else:
-                init = initialization
+
+        if self.device == "cpu":
                 
             def _matvec(x):
-
                 
-                sol, converged = sp_cg(self.C, self.A.rmatvec(x), x0=init, M=self.Mpinv, *self.args, **self.kwargs) 
+                counter = IterationCounter()
+                
+                sol, converged = sp_cg(self.C, self.A.rmatvec(x), x0=initialization, M=self.Mpinv, callback=counter, *self.args, **self.kwargs) 
                 if self.check:
                     assert converged == 0, "CG algorithm did not converge!"
                 
                 if self.warmstart_prev:
                     self.prev_eval = sol.copy()
                 
-                return sol
+                return sol, counter.count
             
             return _matvec(x)
         
         else:
              
-            if initialization is None:
-                init = None
-            else:
-                init = initialization
 
-                def _matvec(x):
-                # print(f"x: {x.shape}")
-                # print(f"C: {self.C.shape}")
-                # print(f"A^T x: {self.A.rmatvec(x).shape}")
-                # print(f"initialization: initialization.shape")
-                # print(self.C.shape)
-                # print(self.A.rmatvec(x))
+            def _matvec(x):
+                
+                counter = IterationCounter()
 
-
-                    sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=init, *self.args, **self.kwargs)
-                    if self.check:
-                        assert converged == 0, "CG algorithm did not converge!"
+                sol, converged = cupy_cg(self.C, self.A.rmatvec(x), M=self.Mpinv, x0=initialization, callback=counter, *self.args, **self.kwargs)
+                if self.check:
+                    assert converged == 0, "CG algorithm did not converge!"
+                
+                if self.warmstart_prev:
+                    self.prev_eval = sol.copy()
                     
-                    if self.warmstart_prev:
-                        self.prev_eval = sol.copy()
-                        
-                    return sol
+                return sol, counter.count
              
             return _matvec(x)
 
