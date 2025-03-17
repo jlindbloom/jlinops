@@ -441,7 +441,7 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
             if initialization is None:
                 init = None
             else:
-                init = self.A.rmatvec(initialization)
+                init = initialization
                 
             def _matvec(x):
 
@@ -462,7 +462,7 @@ class CGPreconditionedPinvModOperator(_CustomLinearOperator):
             if initialization is None:
                 init = None
             else:
-                init = self.A.rmatvec(initialization)
+                init = initialization
 
                 def _matvec(x):
                 # print(f"x: {x.shape}")
